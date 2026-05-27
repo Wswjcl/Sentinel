@@ -146,6 +146,48 @@ wwc/
 
 npm workspaces 自动管理项目级依赖隔离，根目录 `npm install` 一步到位。
 
+## Web Dashboard（可视化界面）
+
+WWC 内置 Web 管理面板，提供任务的可视化管理。
+
+### 启动
+
+```bash
+node packages/cli/dist/index.js serve --port 3456 --tasks-dir tasks/examples
+```
+
+打开浏览器访问 `http://localhost:3456`。
+
+### 界面功能
+
+| 功能 | 说明 |
+|------|------|
+| 任务列表 | 深色主题卡片式布局，显示状态圆点、cron 表达式、下次运行时间 |
+| 一键执行 | 每个任务卡片上点 **Run** 立即手动触发 |
+| 展开详情 | 点击任务卡片展开：完整配置、prompt 预览、执行历史表格 |
+| 创建任务 | 右上角 **+ New Task** 弹窗创建，填写名称/描述/cron/prompt/模型 |
+| 调度器控制 | 顶部 **Start/Stop** 一键启停调度守护进程 |
+| 实时日志 | 底部日志面板，调度器运行日志通过 SSE 实时推送 |
+| 自动刷新 | 任务状态变更（触发/完成/失败）时页面自动更新，无需手动刷新 |
+
+### REST API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/health` | 健康检查 + 调度器状态 |
+| `GET` | `/api/events` | SSE 实时事件流 |
+| `GET` | `/api/tasks` | 列出所有任务及状态 |
+| `GET` | `/api/tasks/:name` | 查看单个任务详情 |
+| `POST` | `/api/tasks` | 创建新任务 (JSON body) |
+| `DELETE` | `/api/tasks/:name` | 删除任务 |
+| `POST` | `/api/tasks/:name/run` | 立即执行任务 |
+| `GET` | `/api/tasks/:name/history` | 执行历史 |
+| `GET` | `/api/tasks/:name/output` | 最新执行输出 |
+| `GET` | `/api/tasks/:name/opencode` | 查看任务的 opencode.json 权限配置 |
+| `GET` | `/api/scheduler` | 调度器运行状态 |
+| `POST` | `/api/scheduler/start` | 启动调度器 |
+| `POST` | `/api/scheduler/stop` | 停止调度器 |
+
 ## 配合 OpenCode
 
 WWC 依赖你本地已安装的 [OpenCode](https://opencode.ai)。确保 `opencode` 在 PATH 中可用：
