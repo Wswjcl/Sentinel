@@ -263,6 +263,20 @@ export const serveCommand = new Command('serve')
       }
     })
 
+    app.put('/api/tasks/:name/opencode', async (req: Request, res: Response) => {
+      const store = getStore(options.tasksDir)
+      try {
+        await store.getConfig(req.params.name as string)
+      } catch {
+        res.status(404).json({ error: 'Task not found' })
+        return
+      }
+      const config = req.body
+      await store.saveOpenCodeConfig(req.params.name as string, config)
+      emitUpdate()
+      res.json({ ok: true })
+    })
+
     interface TreeNode {
       name: string
       path: string

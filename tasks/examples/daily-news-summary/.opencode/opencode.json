@@ -13,8 +13,13 @@
     "question": "ask",
     "external_directory": "deny"
   },
-  "instructions": [".opencode/AGENTS.md"],
+  "instructions": [
+    ".opencode/AGENTS.md"
+  ],
   "watcher": {
-    "ignore": ["output/**", ".history.json"]
+    "ignore": [
+      "output/**",
+      ".history.json"
+    ]
   }
 }
