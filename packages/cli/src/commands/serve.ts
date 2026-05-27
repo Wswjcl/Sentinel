@@ -221,6 +221,135 @@ export const serveCommand = new Command('serve')
       }
     })
 
+    interface TreeNode {
+      name: string
+      path: string
+      type: 'file' | 'dir'
+      children?: TreeNode[]
+    }
+
+    async function listDirInner(dir: string, root: string): Promise<TreeNode[]> {
+      const result: TreeNode[] = []
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+        for (const e of entries) {
+          const full = join(dir, e.name)
+          const rel = full.replace(root, '').replace(/\\/g, '/')
+          if (e.isDirectory()) {
+            const children = await listDirInner(full, root)
+            result.push({ name: e.name, path: rel, type: 'dir', children })
+          } else {
+            result.push({ name: e.name, path: rel, type: 'file' })
+          }
+        }
+      } catch {}
+      return result
+    }
+
+    async function listDir(dir: string, root: string): Promise<TreeNode[]> {
+      const result: TreeNode[] = []
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+        for (const e of entries) {
+          if (e.name === '.history.json') continue
+          const full = join(dir, e.name)
+          const rel = full.replace(root, '').replace(/\\/g, '/')
+          if (e.isDirectory()) {
+            const children = await listDirInner(full, root)
+            result.push({ name: e.name, path: rel, type: 'dir', children })
+          } else {
+            result.push({ name: e.name, path: rel, type: 'file' })
+          }
+        }
+      } catch {}
+      return result
+    }
+
+    app.get('/api/tasks/:name/workspace', async (req: Request, res: Response) => {
+      const store = getStore(options.tasksDir)
+      const taskDir = store.getTaskDir(req.params.name as string)
+      try {
+        await fs.access(taskDir)
+      } catch {
+        res.status(404).json({ error: 'Task not found' })
+        return
+      }
+      const tree = await listDir(taskDir, taskDir)
+      res.json({ dir: taskDir, tree })
+    })
+
+    app.get('/api/tasks/:name/skills', async (req: Request, res: Response) => {
+      const store = getStore(options.tasksDir)
+      const taskDir = store.getTaskDir(req.params.name as string)
+      const skillsDir = join(taskDir, '.opencode', 'skills')
+      try {
+        const entries = await fs.readdir(skillsDir, { withFileTypes: true })
+        const skills = []
+        for (const e of entries) {
+          if (!e.isDirectory()) continue
+          const skillMd = join(skillsDir, e.name, 'SKILL.md')
+          try {
+            const content = await fs.readFile(skillMd, 'utf-8')
+            skills.push({ name: e.name, content })
+          } catch {
+            skills.push({ name: e.name, content: null })
+          }
+        }
+        res.json(skills)
+      } catch {
+        res.json([])
+      }
+    })
+
+    app.get('/api/tasks/:name/scripts', async (req: Request, res: Response) => {
+      const store = getStore(options.tasksDir)
+      const taskDir = store.getTaskDir(req.params.name as string)
+      const scriptsDir = join(taskDir, 'scripts')
+      try {
+        const entries = await fs.readdir(scriptsDir, { withFileTypes: true })
+        const scripts = entries.filter(e => e.isFile()).map(e => e.name)
+        res.json(scripts)
+      } catch {
+        res.json([])
+      }
+    })
+
+    app.get('/api/tasks/:name/outputs', async (req: Request, res: Response) => {
+      const store = getStore(options.tasksDir)
+      const taskDir = store.getTaskDir(req.params.name as string)
+      const outputDir = join(taskDir, 'output')
+      try {
+        const entries = await fs.readdir(outputDir, { withFileTypes: true })
+        const files = await Promise.all(
+          entries
+            .filter(e => e.isFile() && e.name !== '.history.json')
+            .map(async (e) => {
+              const stat = await fs.stat(join(outputDir, e.name))
+              return {
+                name: e.name,
+                size: stat.size,
+                mtime: stat.mtime.toISOString(),
+              }
+            }),
+        )
+        res.json(files)
+      } catch {
+        res.json([])
+      }
+    })
+
+    app.get('/api/tasks/:name/output-file/:filename', async (req: Request, res: Response) => {
+      const store = getStore(options.tasksDir)
+      const taskDir = store.getTaskDir(req.params.name as string)
+      const filePath = join(taskDir, 'output', req.params.filename as string)
+      try {
+        const content = await fs.readFile(filePath, 'utf-8')
+        res.type('text/plain').send(content)
+      } catch {
+        res.status(404).json({ error: 'File not found' })
+      }
+    })
+
     app.get('/api/scheduler', (_req: Request, res: Response) => {
       res.json({
         running: globalScheduler?.isRunning ?? false,
