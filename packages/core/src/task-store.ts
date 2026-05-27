@@ -2,10 +2,12 @@ import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { TaskConfig, TaskInfo, TaskRunRecord, TaskStatus } from './types.js'
+import type { OpenCodeConfig } from './opencode-config.js'
 import { getNextRun } from './cron.js'
 
 const TASK_CONFIG_FILE = 'task.yaml'
 const HISTORY_FILE = '.history.json'
+const OPENCODE_CONFIG_FILE = '.opencode/opencode.json'
 
 export interface TaskStoreOptions {
   tasksDir: string
@@ -54,6 +56,23 @@ export class TaskStore {
 
   async deleteTask(name: string): Promise<void> {
     await fs.rm(join(this.tasksDir, name), { recursive: true, force: true })
+  }
+
+  async getOpenCodeConfig(name: string): Promise<OpenCodeConfig | null> {
+    const configPath = join(this.tasksDir, name, OPENCODE_CONFIG_FILE)
+    try {
+      const raw = await fs.readFile(configPath, 'utf-8')
+      return JSON.parse(raw) as OpenCodeConfig
+    } catch {
+      return null
+    }
+  }
+
+  async saveOpenCodeConfig(name: string, config: OpenCodeConfig): Promise<void> {
+    const dir = join(this.tasksDir, name, '.opencode')
+    await fs.mkdir(dir, { recursive: true })
+    const configPath = join(this.tasksDir, name, OPENCODE_CONFIG_FILE)
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8')
   }
 
   async getHistory(name: string): Promise<TaskRunRecord[]> {

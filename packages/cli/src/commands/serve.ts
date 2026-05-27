@@ -1,7 +1,7 @@
 import { Command } from 'commander'
 import express, { type Request, type Response } from 'express'
 import cors from 'cors'
-import { TaskStore, Scheduler, executeTask, isValidCron } from '@wwc/core'
+import { TaskStore, Scheduler, executeTask, isValidCron, generateOpenCodeConfig } from '@wwc/core'
 import type { TaskConfig } from '@wwc/core'
 import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
@@ -130,6 +130,17 @@ export const serveCommand = new Command('serve')
 
       await store.saveConfig(config.name, finalConfig)
       await fs.mkdir(join(taskDir, '.opencode', 'skills'), { recursive: true })
+      await fs.mkdir(join(taskDir, '.opencode', 'agents'), { recursive: true })
+      await fs.mkdir(join(taskDir, 'scripts'), { recursive: true })
+      await fs.mkdir(join(taskDir, 'output'), { recursive: true })
+
+      const ocConfig = generateOpenCodeConfig(finalConfig)
+      await store.saveOpenCodeConfig(config.name, ocConfig)
+      await fs.writeFile(
+        join(taskDir, '.opencode', 'AGENTS.md'),
+        `# ${finalConfig.name}\n\n${finalConfig.description}\n\nThis task is managed by WWC scheduler.\n`,
+        'utf-8',
+      )
 
       emitUpdate()
       res.status(201).json({ ok: true, name: config.name })
@@ -200,6 +211,16 @@ export const serveCommand = new Command('serve')
       }
     })
 
+    app.get('/api/tasks/:name/opencode', async (req: Request, res: Response) => {
+      const store = getStore(options.tasksDir)
+      try {
+        const config = await store.getOpenCodeConfig(req.params.name as string)
+        res.json(config ?? {})
+      } catch {
+        res.status(404).json({ error: 'Task not found' })
+      }
+    })
+
     app.get('/api/scheduler', (_req: Request, res: Response) => {
       res.json({
         running: globalScheduler?.isRunning ?? false,
@@ -259,7 +280,7 @@ export const serveCommand = new Command('serve')
     server.listen(port, () => {
       console.log(`
 ╔══════════════════════════════════════════════╗
-�?         WWC Dashboard                       �?�?  Open http://localhost:${port} in your browser   �?╚══════════════════════════════════════════════╝
+�?         WWC Dashboard                       �?�?  Open http://localhost:${port} in your browser   �?╚══════════════════════════════════════════════╝
 `)
     })
 

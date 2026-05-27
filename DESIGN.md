@@ -134,6 +134,9 @@ states:
      --agent <agent> \
      --dangerously-skip-permissions \
      "<prompt>"
+   OpenCode 自动加载任务目录下的 `.opencode/opencode.json` 获取权限配置,
+   加载 `.opencode/skills/` 获取项目级 skills,
+   加载 `.opencode/AGENTS.md` 获取 agent 规则.
 4. 捕获 stdout/stderr 输出
 5. 等待进程完成或超时
 6. 记录执行结果 (logs, output files)
@@ -192,24 +195,34 @@ wwc/
 │   │   │   ├── scheduler.ts     # 调度引擎
 │   │   │   ├── executor.ts      # opencode 执行器
 │   │   │   ├── cron.ts          # cron 解析
-│   │   │   ├── logger.ts        # 日志
+│   │   │   ├── opencode-config.ts # opencode.json 生成器
 │   │   │   └── types.ts         # 类型定义
 │   │   └── package.json
 │   └── cli/                     # @wwc/cli
 │       ├── src/
 │       │   ├── index.ts         # 入口
-│       │   └── commands/
-│       │       ├── create.ts
-│       │       ├── list.ts
-│       │       ├── run.ts
-│       │       ├── scheduler.ts
-│       │       └── ...
+│       │   ├── commands/
+│       │   │   ├── create.ts
+│       │   │   ├── list.ts
+│       │   │   ├── run.ts
+│       │   │   ├── scheduler.ts
+│       │   │   ├── serve.ts     # Web Dashboard
+│       │   │   └── ...
+│       │   └── web/
+│       │       └── dashboard.html
 │       └── package.json
 ├── tasks/                       # 任务存储目录 (默认)
 │   └── examples/                # 示例任务
-│       └── daily-summary/
+│       └── daily-news-summary/
 │           ├── task.yaml
+│           ├── scripts/
+│           ├── output/
 │           └── .opencode/
+│               ├── opencode.json     # ⭐ 权限配置
+│               ├── AGENTS.md
+│               ├── skills/
+│               │   └── news-digest/SKILL.md
+│               └── agents/
 │               ├── skills/
 │               │   └── news-digest/
 │               │       └── SKILL.md

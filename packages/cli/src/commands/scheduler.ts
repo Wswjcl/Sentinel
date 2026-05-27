@@ -9,9 +9,11 @@ export const schedulerCommand = new Command('scheduler')
 schedulerCommand
   .command('start')
   .description('Start the scheduler')
+  .option('--interval <ms>', 'Check interval in ms (default: 60000 = 1min)', '60000')
   .action(async (options: any) => {
     const parent = schedulerCommand.optsWithGlobals()
     const tasksDir = parent.tasksDir || 'tasks'
+    const interval = parseInt(options.interval, 10)
 
     const store = new TaskStore({ tasksDir })
     await store.init()
@@ -19,7 +21,7 @@ schedulerCommand
     const scheduler = new Scheduler({
       taskStore: store,
       concurrency: 3,
-      checkIntervalMs: 60_000,
+      checkIntervalMs: interval,
     })
 
     scheduler.setLogger((level, msg) => {
