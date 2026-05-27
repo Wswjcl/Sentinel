@@ -1,0 +1,33 @@
+# Task Configuration
+name: daily-news-summary
+description: 每天早上9点整理AI/科技新闻摘要
+version: 1
+
+schedule:
+  type: cron
+  expr: "0 9 * * *"
+  timezone: Asia/Shanghai
+
+execution:
+  prompt: |
+    请浏览今天的 AI/科技领域重要新闻，整理一份中文摘要。
+
+    要求：
+    1. 提取 5-10 条最重要的新闻
+    2. 每条新闻用 2-3 句话概括核心要点
+    3. 按重要性排序
+    4. 输出为 markdown 格式，保存到 output/daily-$(date +%Y-%m-%d).md
+    5. 在文件顶部注明日期和生成时间
+    
+    请使用 news-digest skill。
+  model: ""
+  agent: default
+  timeout: 600
+  retry:
+    max: 2
+    delay: 60
+
+notify:
+  on_success: none
+  on_failure: webhook
+  webhook_url: ""

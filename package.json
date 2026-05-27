@@ -1,0 +1,16 @@
+{
+  "name": "wwc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-powered task scheduler - schedule tasks that run via OpenCode agents",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/core && npm run build -w packages/cli",
+    "cli": "npm start -w packages/cli"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

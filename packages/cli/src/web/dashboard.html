@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WWC Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    :root {
+      --green: #3fb950;
+      --blue: #58a6ff;
+      --red: #f85149;
+      --yellow: #d2991d;
+      --gray: #8b949e;
+      --border: #30363d;
+      --bg-card: #161b22;
+      --bg-hover: #1c2129;
+      --radius: 8px;
+    }
+
+    header {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(8px);
+    }
+    header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #f0f6fc;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    header h1 span {
+      color: var(--green);
+      font-size: 14px;
+      font-weight: 400;
+      background: rgba(63,185,80,0.12);
+      padding: 2px 10px;
+      border-radius: 12px;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .scheduler-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--gray);
+    }
+    .scheduler-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--gray);
+    }
+    .scheduler-dot.running {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+
+    .btn {
+      padding: 6px 16px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #21262d;
+      color: #c9d1d9;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover { background: #30363d; border-color: #8b949e; }
+    .btn-primary { background: #238636; border-color: #238636; color: #fff; }
+    .btn-primary:hover { background: #2ea043; }
+    .btn-danger { color: var(--red); border-color: var(--red); }
+    .btn-danger:hover { background: rgba(248,81,73,0.12); }
+    .btn-sm { padding: 3px 10px; font-size: 12px; }
+    .btn-xs { padding: 2px 8px; font-size: 11px; border-radius: 4px; }
+
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .toolbar h2 { font-size: 16px; color: #f0f6fc; }
+
+    .task-count { color: var(--gray); font-size: 13px; }
+
+    .tasks-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .task-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      transition: border-color 0.15s;
+      cursor: pointer;
+    }
+    .task-card:hover { border-color: #8b949e; }
+    .task-card.expanded { border-color: var(--blue); }
+
+    .task-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .task-card-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.pending { background: var(--gray); }
+    .status-dot.scheduled { background: var(--blue); }
+    .status-dot.running { background: var(--yellow); animation: pulse 1s infinite; }
+    .status-dot.success { background: var(--green); }
+    .status-dot.failed { background: var(--red); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .task-name {
+      font-weight: 600;
+      color: #f0f6fc;
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .task-desc {
+      color: var(--gray);
+      font-size: 12px;
+      margin-left: 20px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .task-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--gray);
+      flex-shrink: 0;
+    }
+    .task-meta span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .task-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .task-detail {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      display: none;
+    }
+    .task-card.expanded .task-detail { display: block; }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .detail-item label {
+      display: block;
+      font-size: 11px;
+      color: var(--gray);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+    .detail-item .val {
+      font-size: 13px;
+      color: #c9d1d9;
+    }
+    .detail-prompt {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #8b949e;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      white-space: pre-wrap;
+      max-height: 120px;
+      overflow-y: auto;
+      margin-bottom: 14px;
+    }
+
+    .history-table {
+      width: 100%;
+      font-size: 12px;
+      border-collapse: collapse;
+    }
+    .history-table th {
+      text-align: left;
+      padding: 6px 10px;
+      color: var(--gray);
+      font-weight: 500;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+    .history-table td {
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .history-table tr:hover td { background: var(--bg-hover); }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      width: 90%;
+      max-width: 560px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h3 {
+      font-size: 16px;
+      color: #f0f6fc;
+      margin-bottom: 16px;
+    }
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: var(--gray);
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+    .form-group input, .form-group textarea, .form-group select {
+      width: 100%;
+      padding: 8px 12px;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-group input:focus, .form-group textarea:focus {
+      border-color: var(--blue);
+    }
+    .form-group textarea { min-height: 80px; resize: vertical; }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 20px;
+    }
+
+    /* Logs panel */
+    .logs-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #0d1117;
+      border-top: 1px solid var(--border);
+      max-height: 160px;
+      overflow-y: auto;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 11px;
+      padding: 8px 24px;
+      z-index: 5;
+    }
+    .log-entry {
+      padding: 2px 0;
+      display: flex;
+      gap: 8px;
+    }
+    .log-entry .time { color: #484f58; flex-shrink: 0; }
+    .log-entry.info { color: var(--blue); }
+    .log-entry.warn { color: var(--yellow); }
+    .log-entry.error { color: var(--red); }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--gray);
+    }
+    .empty-state h3 { color: #8b949e; margin-bottom: 8px; font-size: 16px; }
+    .empty-state p { font-size: 13px; }
+
+    .mobile-hide { }
+    @media (max-width: 768px) {
+      .mobile-hide { display: none; }
+      .task-meta { gap: 8px; }
+      .task-desc { display: none; }
+      .form-row { grid-template-columns: 1fr; }
+      header { padding: 10px 14px; }
+      main { padding: 14px; }
+    }
+
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      z-index: 200;
+      animation: slideIn 0.2s ease-out;
+      pointer-events: none;
+    }
+    .toast.success { background: #238636; color: #fff; }
+    .toast.error { background: #da3633; color: #fff; }
+    @keyframes slideIn {
+      from { transform: translateX(100px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3fb950" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    WWC <span>AI Scheduler</span>
+  </h1>
+  <div class="header-right">
+    <div class="scheduler-indicator">
+      <div class="scheduler-dot" id="schedulerDot"></div>
+      <span id="schedulerLabel">Scheduler: Off</span>
+    </div>
+    <button class="btn btn-primary btn-sm" id="btnScheduler" onclick="toggleScheduler()">Start</button>
+    <button class="btn btn-sm" onclick="openCreateModal()">+ New Task</button>
+  </div>
+</header>
+
+<main id="main">
+  <div class="toolbar">
+    <h2>Tasks</h2>
+    <span class="task-count" id="taskCount"></span>
+  </div>
+  <div class="tasks-grid" id="tasksGrid">
+    <div class="empty-state">
+      <h3>No tasks yet</h3>
+      <p>Click "+ New Task" to create your first scheduled AI task.</p>
+    </div>
+  </div>
+</main>
+
+<div id="logsPanel" class="logs-panel" style="display:none"></div>
+
+<!-- Create Modal -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal">
+    <h3>New Task</h3>
+    <div class="form-group">
+      <label>Task Name</label>
+      <input id="cName" placeholder="e.g. daily-news-summary" />
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <input id="cDesc" placeholder="Brief description" />
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Cron Schedule</label>
+        <input id="cSchedule" value="0 9 * * *" placeholder="0 9 * * *" />
+      </div>
+      <div class="form-group">
+        <label>Timezone</label>
+        <input id="cTimezone" value="Asia/Shanghai" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Model (optional)</label>
+        <input id="cModel" placeholder="Default if empty" />
+      </div>
+      <div class="form-group">
+        <label>Agent</label>
+        <input id="cAgent" value="default" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Prompt</label>
+      <textarea id="cPrompt" placeholder="What should the AI agent do?"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCreateModal()">Cancel</button>
+      <button class="btn btn-primary" id="btnCreate" onclick="createTask()">Create</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+
+<script>
+  const API = '';
+
+  async function api(path, opts = {}) {
+    const res = await fetch(API + path, {
+      headers: opts.body ? { 'Content-Type': 'application/json' } : {},
+      ...opts,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || res.statusText);
+    }
+    return res.json();
+  }
+
+  // SSE
+  const evtSource = new EventSource(API + '/api/events');
+  evtSource.addEventListener('update', () => loadTasks());
+  evtSource.addEventListener('log', (e) => {
+    const data = JSON.parse(e.data);
+    addLog(data.level, data.msg);
+  });
+
+  const logEntries = [];
+  function addLog(level, msg) {
+    const panel = document.getElementById('logsPanel');
+    panel.style.display = 'block';
+    const now = new Date().toLocaleTimeString();
+    logEntries.push({ level, msg, time: now });
+    if (logEntries.length > 50) logEntries.shift();
+    panel.innerHTML = logEntries.map(l =>
+      `<div class="log-entry ${l.level}"><span class="time">${l.time}</span>${l.msg}</div>`
+    ).join('');
+    panel.scrollTop = panel.scrollHeight;
+  }
+
+  // Load tasks
+  async function loadTasks() {
+    let tasks;
+    try {
+      tasks = await api('/api/tasks');
+    } catch { return; }
+    const grid = document.getElementById('tasksGrid');
+    const count = document.getElementById('taskCount');
+
+    if (!tasks || tasks.length === 0) {
+      grid.innerHTML = `
+        <div class="empty-state">
+          <h3>No tasks yet</h3>
+          <p>Click "+ New Task" to create your first scheduled AI task.</p>
+        </div>`;
+      count.textContent = '0 tasks';
+      return;
+    }
+
+    count.textContent = `${tasks.length} task${tasks.length > 1 ? 's' : ''}`;
+    grid.innerHTML = tasks.map(t => renderTaskCard(t)).join('');
+
+    // Re-bind expand handlers
+    grid.querySelectorAll('.task-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return;
+        card.classList.toggle('expanded');
+      });
+    });
+  }
+
+  function statusClass(status) {
+    const map = { pending: 'pending', scheduled: 'scheduled', running: 'running', success: 'success', failed: 'failed' };
+    return map[status] || 'pending';
+  }
+
+  function renderTaskCard(t) {
+    const sched = t.config?.schedule || {};
+    const exec = t.config?.execution || {};
+    const nextRun = t.nextRun ? new Date(t.nextRun).toLocaleString() : '—';
+    const lastRun = t.lastRun ? new Date(t.lastRun).toLocaleString() : 'Never';
+
+    const historyRows = (t.history || []).slice(-10).reverse().map(h => `
+      <tr>
+        <td>${new Date(h.startedAt).toLocaleString()}</td>
+        <td><span style="color:${h.status === 'success' ? '#3fb950' : '#f85149'}">${h.status}</span></td>
+        <td>${h.exitCode != null ? h.exitCode : '—'}</td>
+      </tr>
+    `).join('');
+
+    return `
+      <div class="task-card" data-name="${esc(t.config?.name || '')}">
+        <div class="task-card-header">
+          <div class="task-card-left">
+            <div class="status-dot ${statusClass(t.status)}"></div>
+            <span class="task-name">${esc(t.config?.name || '')}</span>
+            <span class="task-desc mobile-hide">${esc(t.config?.description || '')}</span>
+          </div>
+          <div class="task-meta">
+            <span>⏰ ${esc(sched.expr || '')}</span>
+            <span class="mobile-hide">▶ ${nextRun}</span>
+            <span style="color:${t.runCount > 0 ? '#c9d1d9' : '#484f58'}">${t.runCount} runs</span>
+          </div>
+          <div class="task-actions">
+            <button class="btn btn-xs btn-primary" onclick="event.stopPropagation();runTask('${esc(t.config?.name || '')}')">Run</button>
+            <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteTask('${esc(t.config?.name || '')}')">Del</button>
+          </div>
+        </div>
+        <div class="task-detail">
+          <div class="detail-grid">
+            <div class="detail-item"><label>Schedule</label><div class="val">${esc(sched.expr || '')} (${esc(sched.timezone || '')})</div></div>
+            <div class="detail-item"><label>Next Run</label><div class="val">${nextRun}</div></div>
+            <div class="detail-item"><label>Last Run</label><div class="val">${lastRun}</div></div>
+            <div class="detail-item"><label>Model</label><div class="val">${esc(exec.model || 'default')}</div></div>
+            <div class="detail-item"><label>Agent</label><div class="val">${esc(exec.agent || 'default')}</div></div>
+            <div class="detail-item"><label>Status</label><div class="val" style="color:var(--${statusClass(t.status) === 'success' ? 'green' : statusClass(t.status) === 'failed' ? 'red' : 'gray'})">${t.status}</div></div>
+          </div>
+          <div class="detail-prompt">${esc(exec.prompt || '')}</div>
+          ${historyRows ? `
+            <table class="history-table">
+              <thead><tr><th>Time</th><th>Status</th><th>Exit</th></tr></thead>
+              <tbody>${historyRows}</tbody>
+            </table>
+          ` : '<div style="font-size:12px;color:#484f58">No run history</div>'}
+        </div>
+      </div>`;
+  }
+
+  function esc(s) {
+    if (typeof s !== 'string') return '';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // Scheduler control
+  async function toggleScheduler() {
+    try {
+      const status = await api('/api/scheduler');
+      if (status.running) {
+        await api('/api/scheduler/stop', { method: 'POST' });
+        updateSchedulerUI(false);
+        toast('Scheduler stopped', 'success');
+      } else {
+        await api('/api/scheduler/start', { method: 'POST' });
+        updateSchedulerUI(true);
+        toast('Scheduler started', 'success');
+        document.getElementById('logsPanel').style.display = 'block';
+      }
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }
+
+  function updateSchedulerUI(running) {
+    const dot = document.getElementById('schedulerDot');
+    const label = document.getElementById('schedulerLabel');
+    const btn = document.getElementById('btnScheduler');
+    if (running) {
+      dot.className = 'scheduler-dot running';
+      label.textContent = 'Scheduler: Running';
+      btn.textContent = 'Stop';
+      btn.className = 'btn btn-sm btn-danger';
+    } else {
+      dot.className = 'scheduler-dot';
+      label.textContent = 'Scheduler: Off';
+      btn.textContent = 'Start';
+      btn.className = 'btn btn-primary btn-sm';
+    }
+  }
+
+  async function checkSchedulerStatus() {
+    try {
+      const status = await api('/api/scheduler');
+      updateSchedulerUI(status.running);
+    } catch {}
+  }
+
+  // Task actions
+  async function runTask(name) {
+    try {
+      await api(`/api/tasks/${encodeURIComponent(name)}/run`, { method: 'POST' });
+      toast(`Task "${name}" started`, 'success');
+      setTimeout(loadTasks, 2000);
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }
+
+  async function deleteTask(name) {
+    if (!confirm(`Delete task "${name}"? This cannot be undone.`)) return;
+    try {
+      await api(`/api/tasks/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      toast(`Task "${name}" deleted`, 'success');
+      loadTasks();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }
+
+  // Create modal
+  function openCreateModal() { document.getElementById('createModal').classList.add('open'); }
+  function closeCreateModal() { document.getElementById('createModal').classList.remove('open'); }
+
+  async function createTask() {
+    const name = document.getElementById('cName').value.trim();
+    if (!name) { toast('Task name is required', 'error'); return; }
+
+    const body = {
+      name,
+      description: document.getElementById('cDesc').value.trim(),
+      schedule: {
+        type: 'cron',
+        expr: document.getElementById('cSchedule').value.trim(),
+        timezone: document.getElementById('cTimezone').value.trim(),
+      },
+      execution: {
+        prompt: document.getElementById('cPrompt').value.trim(),
+        model: document.getElementById('cModel').value.trim() || undefined,
+        agent: document.getElementById('cAgent').value.trim() || 'default',
+        timeout: 600,
+        retry: { max: 2, delay: 60 },
+      },
+    };
+
+    try {
+      await api('/api/tasks', { method: 'POST', body: JSON.stringify(body) });
+      closeCreateModal();
+      loadTasks();
+      toast(`Task "${name}" created`, 'success');
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }
+
+  // Toast
+  function toast(msg, type) {
+    const container = document.getElementById('toastContainer');
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = msg;
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+  }
+
+  // Init
+  loadTasks();
+  checkSchedulerStatus();
+
+  document.getElementById('createModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeCreateModal();
+  });
+</script>
+
+</body>
+</html>
