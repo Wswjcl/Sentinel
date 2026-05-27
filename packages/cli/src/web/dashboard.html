@@ -190,8 +190,9 @@ main{max-width:1400px;margin:0 auto;padding:24px}
 <div class="modal-overlay" id="createModal">
   <div class="modal">
     <h3>New Workspace</h3>
-    <div class="form-group"><label>Name</label><input id="cName" placeholder="e.g. daily-news-summary"/></div>
+    <div class="form-group"><label>Name *</label><input id="cName" placeholder="e.g. daily-news-summary"/></div>
     <div class="form-group"><label>Description</label><input id="cDesc" placeholder="Brief description"/></div>
+    <div class="form-group"><label>Project Directory</label><input id="cProjectDir" placeholder="Default: tasks/&lt;name&gt; (leave empty for default)"/></div>
     <div class="form-row">
       <div class="form-group"><label>Cron Schedule</label><input id="cSchedule" value="0 9 * * *"/></div>
       <div class="form-group"><label>Timezone</label><input id="cTimezone" value="Asia/Shanghai"/></div>
@@ -201,6 +202,8 @@ main{max-width:1400px;margin:0 auto;padding:24px}
       <div class="form-group"><label>Agent</label><input id="cAgent" value="default"/></div>
     </div>
     <div class="form-group"><label>Prompt</label><textarea id="cPrompt" placeholder="What should the AI agent do?"></textarea></div>
+    <div class="form-group"><label>Skills <span style="color:var(--gray);font-size:11px">(comma-separated, SKILL.md auto-created in .opencode/skills/)</span></label><input id="cSkills" placeholder="e.g. news-digest, code-review"/></div>
+    <div class="form-group"><label>External Directories <span style="color:var(--gray);font-size:11px">(one per line: path:perm:rw, e.g. D:/data:allow:rw)</span></label><textarea id="cExternalDirs" placeholder="D:\data:allow:rw&#10;C:\output:allow:w&#10;-- or leave empty to deny all --" style="min-height:50px"></textarea></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeCreateModal()">Cancel</button>
       <button class="btn btn-primary" id="btnCreate" onclick="createTask()">Create</button>
@@ -469,10 +472,41 @@ async function deleteTask(name){if(!confirm(`Delete workspace "${name}"? This re
 function openCreateModal(){document.getElementById('createModal').classList.add('open')}
 function closeCreateModal(){document.getElementById('createModal').classList.remove('open')}
 
+function parseExternalDirs(text){
+  if(!text||!text.trim())return undefined;
+  return text.split('\n').map(l=>l.trim()).filter(Boolean).map(line=>{
+    const parts=line.split(':');
+    let path,permStart=1;
+    if(parts.length>1&&/^[A-Za-z]$/.test(parts[0])&&/^[/\\]/.test(parts[1]||'')){path=parts[0]+':'+parts[1];permStart=2}else{path=parts[0]}
+    if(!path)return null;
+    const ext={path,permission:'allow',read:true,write:true,exec:true};
+    for(let i=permStart;i<parts.length;i++){
+      const p=parts[i].toLowerCase();
+      if(p==='allow'||p==='deny'){ext.permission=p;if(p==='deny'){ext.read=ext.write=ext.exec=false}}
+      else if(p==='r')ext.read=true;else if(p==='w')ext.write=true;else if(p==='x')ext.exec=true
+      else if(p==='ro'){ext.read=true;ext.write=false;ext.exec=false}
+    }
+    return ext;
+  }).filter(Boolean);
+}
+
 async function createTask(){
   const name=document.getElementById('cName').value.trim();
   if(!name){toast('Name is required','error');return}
-  const body={name,description:document.getElementById('cDesc').value.trim(),schedule:{type:'cron',expr:document.getElementById('cSchedule').value.trim(),timezone:document.getElementById('cTimezone').value.trim()},execution:{prompt:document.getElementById('cPrompt').value.trim(),model:document.getElementById('cModel').value.trim()||undefined,agent:document.getElementById('cAgent').value.trim()||'default',timeout:600,retry:{max:2,delay:60}}};
+  const projectDir=document.getElementById('cProjectDir').value.trim()||undefined;
+  const skillsRaw=document.getElementById('cSkills').value.trim();
+  const skills=skillsRaw?skillsRaw.split(',').map(s=>s.trim()).filter(Boolean):undefined;
+  const externalDirs=parseExternalDirs(document.getElementById('cExternalDirs').value);
+
+  const body={
+    name,
+    description:document.getElementById('cDesc').value.trim(),
+    projectDir,
+    schedule:{type:'cron',expr:document.getElementById('cSchedule').value.trim(),timezone:document.getElementById('cTimezone').value.trim()},
+    execution:{prompt:document.getElementById('cPrompt').value.trim(),model:document.getElementById('cModel').value.trim()||undefined,agent:document.getElementById('cAgent').value.trim()||'default',timeout:600,retry:{max:2,delay:60}},
+    skills,
+    externalDirs,
+  };
   try{await api('/api/tasks',{method:'POST',body:JSON.stringify(body)});closeCreateModal();loadTasks();toast(`"${name}" created`,'success')}catch(e){toast(e.message,'error')}
 }
 

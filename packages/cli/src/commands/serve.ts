@@ -1,12 +1,12 @@
 import { Command } from 'commander'
 import express, { type Request, type Response } from 'express'
 import cors from 'cors'
-import { TaskStore, Scheduler, executeTask, isValidCron, generateOpenCodeConfig } from '@wwc/core'
-import type { TaskConfig } from '@wwc/core'
+import { TaskStore, Scheduler, executeTask, isValidCron, generateOpenCodeConfig, generateSkillContent } from '@wwc/core'
+import type { TaskConfig, ExternalDir } from '@wwc/core'
 import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { promises as fs } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 interface SSEClient {
@@ -91,59 +91,101 @@ export const serveCommand = new Command('serve')
 
     app.post('/api/tasks', async (req: Request, res: Response) => {
       const store = getStore(options.tasksDir)
-      const config = req.body as TaskConfig & { name: string }
+      const body = req.body as {
+        name: string
+        description?: string
+        projectDir?: string
+        schedule?: { type?: string; expr?: string; timezone?: string }
+        execution?: {
+          prompt?: string
+          model?: string
+          agent?: string
+          timeout?: number
+          retry?: { max?: number; delay?: number }
+        }
+        skills?: string[]
+        externalDirs?: ExternalDir[]
+        allowTools?: string[]
+        denyTools?: string[]
+        notify?: unknown
+      }
 
-      if (!config.name) {
+      if (!body.name) {
         res.status(400).json({ error: 'name is required' })
         return
       }
-      if (config.schedule?.expr && !isValidCron(config.schedule.expr)) {
+      if (body.schedule?.expr && !isValidCron(body.schedule.expr)) {
         res.status(400).json({ error: 'Invalid cron expression' })
         return
       }
 
-      const taskDir = store.getTaskDir(config.name)
+      const taskDir = body.projectDir
+        ? (isAbsolute(body.projectDir) ? body.projectDir : resolve(body.projectDir))
+        : store.getTaskDir(body.name)
+
       try {
         await fs.access(taskDir)
-        res.status(409).json({ error: 'Task already exists' })
+        res.status(409).json({ error: 'Workspace already exists' })
         return
       } catch {}
 
       const finalConfig: TaskConfig = {
-        name: config.name,
-        description: config.description || config.name,
+        name: body.name,
+        description: body.description || body.name,
         version: 1,
         schedule: {
-          type: config.schedule?.type || 'cron',
-          expr: config.schedule?.expr || '0 9 * * *',
-          timezone: config.schedule?.timezone || 'Asia/Shanghai',
+          type: (body.schedule?.type as 'cron' | 'interval' | 'once') || 'cron',
+          expr: body.schedule?.expr || '0 9 * * *',
+          timezone: body.schedule?.timezone || 'Asia/Shanghai',
         },
         execution: {
-          prompt: config.execution?.prompt || 'No prompt',
-          model: config.execution?.model || undefined,
-          agent: config.execution?.agent || 'default',
-          timeout: config.execution?.timeout || 600,
-          retry: config.execution?.retry || { max: 2, delay: 60 },
+          prompt: body.execution?.prompt || 'No prompt',
+          model: body.execution?.model || undefined,
+          agent: body.execution?.agent || 'default',
+          timeout: body.execution?.timeout || 600,
+          retry: {
+            max: body.execution?.retry?.max ?? 2,
+            delay: body.execution?.retry?.delay ?? 60,
+          },
         },
-        notify: config.notify,
+        notify: body.notify as TaskConfig['notify'],
       }
 
-      await store.saveConfig(config.name, finalConfig)
       await fs.mkdir(join(taskDir, '.opencode', 'skills'), { recursive: true })
       await fs.mkdir(join(taskDir, '.opencode', 'agents'), { recursive: true })
       await fs.mkdir(join(taskDir, 'scripts'), { recursive: true })
       await fs.mkdir(join(taskDir, 'output'), { recursive: true })
 
-      const ocConfig = generateOpenCodeConfig(finalConfig)
-      await store.saveOpenCodeConfig(config.name, ocConfig)
+      await store.saveConfig(body.name, finalConfig)
+
+      const ocConfig = generateOpenCodeConfig(finalConfig, {
+        permissions: body.allowTools,
+        denyTools: body.denyTools,
+        externalDirs: body.externalDirs,
+        skills: body.skills,
+      })
+      await store.saveOpenCodeConfig(body.name, ocConfig)
+
       await fs.writeFile(
         join(taskDir, '.opencode', 'AGENTS.md'),
-        `# ${finalConfig.name}\n\n${finalConfig.description}\n\nThis task is managed by WWC scheduler.\n`,
+        `# ${finalConfig.name}\n\n${finalConfig.description}\n\nThis workspace is managed by WWC scheduler.\n`,
         'utf-8',
       )
 
+      if (body.skills && body.skills.length > 0) {
+        for (const skillName of body.skills) {
+          const skillDir = join(taskDir, '.opencode', 'skills', skillName)
+          await fs.mkdir(skillDir, { recursive: true })
+          await fs.writeFile(
+            join(skillDir, 'SKILL.md'),
+            generateSkillContent(skillName, finalConfig.description),
+            'utf-8',
+          )
+        }
+      }
+
       emitUpdate()
-      res.status(201).json({ ok: true, name: config.name })
+      res.status(201).json({ ok: true, name: body.name, dir: taskDir })
     })
 
     app.delete('/api/tasks/:name', async (req: Request, res: Response) => {
