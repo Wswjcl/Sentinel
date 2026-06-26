@@ -22,7 +22,7 @@
     "@tailwindcss/vite": "^4.1.0",
     "@types/node": "^20.0.0",
     "@vitejs/plugin-react": "^4.4.0",
-    "electron": "^34.0.0",
+    "electron": "34.5.8",
     "electron-builder": "^25.1.0",
     "electron-vite": "^3.0.0",
     "lucide-react": "^0.475.0",

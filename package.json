@@ -7,7 +7,11 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w packages/core && npm run build -w packages/cli",
+    "build": "npm run build -w packages/core && npm run build -w packages/cli && npm run build -w packages/desktop",
+    "build:core": "npm run build -w packages/core",
+    "build:cli": "npm run build -w packages/cli",
+    "build:desktop": "npm run build -w packages/desktop",
+    "dev": "npm run dev -w packages/desktop",
     "cli": "npm start -w packages/cli"
   },
   "engines": {
