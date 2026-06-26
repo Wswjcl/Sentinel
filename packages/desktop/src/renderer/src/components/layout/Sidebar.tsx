@@ -1,4 +1,4 @@
-import { Clock, Settings, ListTodo, Play } from 'lucide-react'
+import { Clock, Settings, ListTodo } from 'lucide-react'
 import { useScheduler } from '../../hooks/useScheduler'
 
 interface SidebarProps {
@@ -17,14 +17,6 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
 
   return (
     <aside className="w-56 bg-[var(--color-card)] border-r border-[var(--color-border)] flex flex-col shrink-0">
-      {/* Logo area */}
-      <div className="h-[40px] flex items-center px-4 border-b border-[var(--color-border)]" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-        <div className="flex items-center gap-2">
-          <Play className="w-4 h-4 text-[var(--color-green)]" />
-          <span className="text-sm font-semibold text-[var(--color-text-bright)]">WWC</span>
-        </div>
-      </div>
-
       {/* Navigation */}
       <nav className="flex-1 py-3 px-2">
         {navItems.map(({ id, label, icon: Icon }) => (

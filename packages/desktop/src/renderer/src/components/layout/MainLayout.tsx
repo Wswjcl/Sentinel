@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import Sidebar from './Sidebar'
+import TitleBar from './TitleBar'
 
 interface MainLayoutProps {
   currentView: string
@@ -9,14 +10,19 @@ interface MainLayoutProps {
 
 export default function MainLayout({ currentView, onViewChange, children }: MainLayoutProps) {
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
-      {/* Sidebar */}
-      <Sidebar currentView={currentView} onViewChange={onViewChange} />
+    <div className="flex flex-col h-screen w-screen overflow-hidden">
+      {/* Custom title bar */}
+      <TitleBar />
 
-      {/* Main content area — below the title bar overlay */}
-      <main className="flex-1 overflow-y-auto pt-[40px]">
-        {children}
-      </main>
+      <div className="flex flex-1 min-h-0">
+        {/* Sidebar */}
+        <Sidebar currentView={currentView} onViewChange={onViewChange} />
+
+        {/* Main content area */}
+        <main className="flex-1 overflow-y-auto">
+          {children}
+        </main>
+      </div>
     </div>
   )
 }
