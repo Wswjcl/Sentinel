@@ -2,6 +2,8 @@
 
 基于 OpenCode + LLM 的定时任务调度系统。每个任务 = 一个独立目录（含 tools + skills），定时触发后自动调用 OpenCode CLI 执行。
 
+v1.0.0 带来 **Electron 桌面应用**，替代了之前的 Web Dashboard，提供原生窗口体验、实时事件推送和直接的核心引擎调用。
+
 ## 快速开始
 
 ```bash
@@ -9,44 +11,65 @@
 npm install
 npm run build
 
-# 初始化项目（创建 tasks/ 目录和配置）
+# CLI 使用
 node packages/cli/dist/index.js init
-
-# 创建第一个任务
 node packages/cli/dist/index.js create my-task --schedule "0 9 * * *" --prompt "整理今日新闻"
-
-# 列出所有任务
 node packages/cli/dist/index.js list
-
-# 手动执行一次
 node packages/cli/dist/index.js run my-task
+node packages/cli/dist/index.js scheduler start
 
-# 启动调度器（守护进程）
-node packages/cli/dist/index.js scheduler start     # 按 Ctrl+C 停止
-
-# 启动 Web Dashboard
-node packages/cli/dist/index.js serve --port 3456   # 按 Ctrl+C 停止
+# 启动桌面应用（开发模式）
+npm run dev
 ```
 
-## 关闭服务
+## 桌面应用
 
-### 调度器 (scheduler start)
-在终端按 **`Ctrl + C`** 即可停止。
+v1.0.0 新增 `@wwc/desktop` — 基于 Electron + React + Tailwind 的原生桌面客户端。
 
-### Web Dashboard (serve)
-在终端按 **`Ctrl + C`** 即可停止。
+### 功能
 
-### 强制关闭（如果 Ctrl+C 无效）
+| 功能 | 说明 |
+|------|------|
+| 任务列表 | 深色主题卡片式布局，状态指示器、调度信息、运行计数 |
+| 任务详情 | 5 标签页：概览 / 文件树 / 输出文件 / 执行历史 / OpenCode 配置 |
+| 创建任务 | 模态对话框，支持名称/描述/项目目录/调度/Prompt/模型 |
+| 调度器面板 | 一键启停，实时日志流（自动滚动 + 级别着色） |
+| 设置面板 | 应用信息、数据目录、快捷键参考 |
+| 实时更新 | 任务状态变更、调度器日志通过 Electron IPC 实时推送 |
+
+### 架构
+
+```
+┌─────────────────────────────────────────┐
+│  Electron Main Process                  │
+│  - TaskStore / Scheduler (直接调用 core) │
+│  - IPC Handlers                         │
+│  - wwcEvents → webContents.send()       │
+├─────────────────────────────────────────┤
+│  Preload (contextBridge)                │
+│  - ExposedAPI (类型安全 IPC 封装)        │
+├─────────────────────────────────────────┤
+│  Renderer (React + Tailwind)            │
+│  - TaskList / TaskDetail / Scheduler    │
+│  - useTasks / useScheduler hooks        │
+│  - lib/api (IPC wrapper)                │
+└─────────────────────────────────────────┘
+```
+
+### 开发 & 构建
+
 ```bash
-# Windows PowerShell — 结束所有 wwc 相关 node 进程
-Get-Process -Name node | Where-Object { $_.CommandLine -like "*wwc*" } | Stop-Process -Force
+# 开发模式（热重载）
+npm run dev
 
-# 或者杀掉占用指定端口的进程
-netstat -ano | findstr :3456      # 找到 PID
-taskkill /PID <PID> /F
+# 构建
+npm run build:desktop
+
+# 打包安装程序
+cd packages/desktop && npx electron-builder
 ```
 
-## 命令一览
+## CLI 命令一览
 
 | 命令 | 说明 |
 |------|------|
@@ -57,7 +80,8 @@ taskkill /PID <PID> /F
 | `delete <name>` | 删除任务（加 --force 跳过确认） |
 | `scheduler start` | 启动调度守护进程 |
 | `scheduler status` | 查看调度器状态 |
-| `serve` | 启动 Web Dashboard |
+
+> **注意**: v1.0.0 移除了 `serve` 命令和 Web Dashboard，改用桌面应用。
 
 ## 任务配置 (task.yaml)
 
@@ -91,11 +115,14 @@ notify:                   # 可选
 ```
 tasks/my-task/
 ├── task.yaml                    # 任务定义（调度 + prompt + 模型配置）
+├── .status.json                 # 持久化状态（v1.0.0 新增）
 ├── .opencode/
+│   ├── opencode.json            # OpenCode 权限配置
 │   ├── AGENTS.md                # 该任务专属的 agent 规则
 │   └── skills/                  # 项目级 skills（OpenCode 自动加载）
 │       └── my-skill/
 │           └── SKILL.md
+├── scripts/                     # 任务脚本
 └── output/                      # 执行产物目录
     ├── daily-2026-05-27.md
     └── .history.json            # 执行历史记录
@@ -112,81 +139,48 @@ wwc/
 │   ├── core/                    # @wwc/core 核心引擎
 │   │   └── src/
 │   │       ├── types.ts         # 类型定义
+│   │       ├── events.ts        # 类型安全事件总线 (v1.0.0 新增)
 │   │       ├── cron.ts          # Cron 解析
-│   │       ├── task-store.ts    # 任务 CRUD (YAML)
+│   │       ├── task-store.ts    # 任务 CRUD + 持久化状态
 │   │       ├── executor.ts      # OpenCode 执行器
-│   │       └── scheduler.ts     # 调度引擎
-│   └── cli/                     # @wwc/cli 命令行 + Web
-│       └── src/
-│           ├── index.ts         # 入口
-│           ├── commands/        # 所有命令实现
-│           │   ├── init.ts
-│           │   ├── create.ts
-│           │   ├── list.ts
-│           │   ├── run.ts
-│           │   ├── delete.ts
-│           │   ├── scheduler.ts
-│           │   └── serve.ts     # Web Dashboard
-│           └── web/
-│               └── dashboard.html
+│   │       ├── scheduler.ts     # 调度引擎
+│   │       └── opencode-config.ts # OpenCode 配置生成器
+│   ├── cli/                     # @wwc/cli 命令行
+│   │   └── src/
+│   │       ├── index.ts         # 入口
+│   │       └── commands/        # 所有命令实现
+│   └── desktop/                 # @wwc/desktop 桌面应用 (v1.0.0 新增)
+│       ├── src/
+│       │   ├── main/            # Electron 主进程
+│       │   ├── preload/         # Context Bridge
+│       │   ├── renderer/        # React + Tailwind 前端
+│       │   └── shared/          # IPC 类型定义
+│       ├── electron.vite.config.ts
+│       └── electron-builder.yml
 └── tasks/examples/
     └── daily-news-summary/      # 示例任务
-        ├── task.yaml
-        └── .opencode/
-            ├── AGENTS.md
-            └── skills/news-digest/SKILL.md
 ```
+
+## v1.0.0 变更摘要
+
+| 变更 | 说明 |
+|------|------|
+| 🆕 `@wwc/desktop` | Electron + React + Tailwind 桌面应用 |
+| 🗑️ `serve` 命令 | 移除 Web Dashboard，改用桌面应用 |
+| 🆕 类型安全事件总线 | `wwcEvents` (EventEmitter + 泛型) |
+| 🆕 持久化状态 | `.status.json` 文件，崩溃恢复 `running → failed` |
+| 🔒 路径遍历防护 | `isValidTaskName()` + `safeTaskPath()` |
+| 🔒 命令注入防护 | `spawn()` 移除 `shell: true` |
+| 🔒 输出文件读取防护 | IPC handler 中 `resolve() + startsWith()` 校验 |
+| 🆕 IPC 类型共享 | `shared/ipc-types.ts` 单一信源 |
 
 ## 依赖说明
 
 | 包 | 依赖 | 用途 |
 |---|---|---|
-| `@wwc/core` | cron-parser, yaml | cron 调度 + YAML 读写 |
-| `@wwc/cli` | commander, chalk, express, cors | CLI + Web Dashboard |
-
-npm workspaces 自动管理项目级依赖隔离，根目录 `npm install` 一步到位。
-
-## Web Dashboard（可视化界面）
-
-WWC 内置 Web 管理面板，提供任务的可视化管理。
-
-### 启动
-
-```bash
-node packages/cli/dist/index.js serve --port 3456 --tasks-dir tasks/examples
-```
-
-打开浏览器访问 `http://localhost:3456`。
-
-### 界面功能
-
-| 功能 | 说明 |
-|------|------|
-| 任务列表 | 深色主题卡片式布局，显示状态圆点、cron 表达式、下次运行时间 |
-| 一键执行 | 每个任务卡片上点 **Run** 立即手动触发 |
-| 展开详情 | 点击任务卡片展开：完整配置、prompt 预览、执行历史表格 |
-| 创建任务 | 右上角 **+ New Task** 弹窗创建，填写名称/描述/cron/prompt/模型 |
-| 调度器控制 | 顶部 **Start/Stop** 一键启停调度守护进程 |
-| 实时日志 | 底部日志面板，调度器运行日志通过 SSE 实时推送 |
-| 自动刷新 | 任务状态变更（触发/完成/失败）时页面自动更新，无需手动刷新 |
-
-### REST API 端点
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| `GET` | `/api/health` | 健康检查 + 调度器状态 |
-| `GET` | `/api/events` | SSE 实时事件流 |
-| `GET` | `/api/tasks` | 列出所有任务及状态 |
-| `GET` | `/api/tasks/:name` | 查看单个任务详情 |
-| `POST` | `/api/tasks` | 创建新任务 (JSON body) |
-| `DELETE` | `/api/tasks/:name` | 删除任务 |
-| `POST` | `/api/tasks/:name/run` | 立即执行任务 |
-| `GET` | `/api/tasks/:name/history` | 执行历史 |
-| `GET` | `/api/tasks/:name/output` | 最新执行输出 |
-| `GET` | `/api/tasks/:name/opencode` | 查看任务的 opencode.json 权限配置 |
-| `GET` | `/api/scheduler` | 调度器运行状态 |
-| `POST` | `/api/scheduler/start` | 启动调度器 |
-| `POST` | `/api/scheduler/stop` | 停止调度器 |
+| `@wwc/core` | cron-parser, yaml | cron 调度 + YAML 读写 + 事件系统 |
+| `@wwc/cli` | commander, chalk, yaml | CLI 工具 |
+| `@wwc/desktop` | electron, react, tailwindcss, lucide-react | 桌面客户端 |
 
 ## 配合 OpenCode
 
@@ -251,45 +245,11 @@ opencode --version   # 确认已安装
                               │                    │ retry耗尽
                               │           ┌────────▼────────┐
                               │           │  状态: failed    │
-                              │           │  触发失败通知     │
+                              │           │  写入 .status.json│
                               │           └────────┬────────┘
                               │                    │
                          ┌────▼────────────────────▼────┐
                          │      下一次 cron 时间到       │
                          │      再次触发 (循环)          │
                          └──────────────────────────────┘
-```
-
-### 核心判断逻辑
-
-```
-shouldRunNow(cron表达式, 上次运行时间)
-  ├── 解析 cron 表达式 → 获取 prev (上一个触发点)
-  ├── lastRun == null  →  首次运行，prev 已过 → 触发
-  ├── now >= prev && lastRun < prev → 触发
-  └── 否则 → 跳过
-```
-
-### Web Dashboard 页面结构
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  ◉ WWC AI Scheduler    Scheduler: ● Running  [Stop] [+New] │
-├─────────────────────────────────────────────────────────┤
-│  Tasks (3 tasks)                                        │
-│                                                         │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │ ● daily-news-summary  ⏰ 0 9 * * *  ▶ 05/28 09:00 │ Run│Del│
-│  │   每天整理AI/科技新闻          5 runs            │    │
-│  ├─────────────────────────────────────────────────┤    │
-│  │  [展开详情] Schedule | Prompt | History Table   │    │
-│  └─────────────────────────────────────────────────┘    │
-│                                                         │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │ ○ weekly-report       ⏰ 0 10 * * 1  ▶ 06/01 10:00 │ Run│Del│
-│  └─────────────────────────────────────────────────┘    │
-├─────────────────────────────────────────────────────────┤
-│  [INFO] 09:00:01 Triggering task: daily-news-summary    │
-│  [INFO] 09:03:45 Task completed successfully           │
-└─────────────────────────────────────────────────────────┘
 ```
