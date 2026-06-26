@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import type { TaskInfo } from '@wwc/core'
+import { ThemeProvider } from './hooks/useTheme'
 import MainLayout from './components/layout/MainLayout'
 import TaskList from './components/tasks/TaskList'
 import TaskDetail from './components/tasks/TaskDetail'
@@ -17,28 +18,30 @@ export default function App() {
   }, [])
 
   return (
-    <MainLayout
-      currentView={view}
-      onViewChange={(v) => { setView(v); setSelectedTask(null) }}
-    >
-      {view === 'tasks' && !selectedTask && (
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-xl font-semibold text-[var(--color-text-bright)]">Workspaces</h1>
-              <p className="text-sm text-[var(--color-text-muted)] mt-1">
-                Each workspace = one directory = one task with its own .opencode/ config
-              </p>
+    <ThemeProvider>
+      <MainLayout
+        currentView={view}
+        onViewChange={(v) => { setView(v); setSelectedTask(null) }}
+      >
+        {view === 'tasks' && !selectedTask && (
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-xl font-semibold text-[var(--color-text-bright)]">Workspaces</h1>
+                <p className="text-sm text-[var(--color-text-muted)] mt-1">
+                  Each workspace = one directory = one task with its own .opencode/ config
+                </p>
+              </div>
             </div>
+            <TaskList onSelect={setSelectedTask} />
           </div>
-          <TaskList onSelect={setSelectedTask} />
-        </div>
-      )}
-      {view === 'tasks' && selectedTask && (
-        <TaskDetail task={selectedTask} onBack={handleBack} />
-      )}
-      {view === 'scheduler' && <SchedulerPanel />}
-      {view === 'settings' && <SettingsPanel />}
-    </MainLayout>
+        )}
+        {view === 'tasks' && selectedTask && (
+          <TaskDetail task={selectedTask} onBack={handleBack} />
+        )}
+        {view === 'scheduler' && <SchedulerPanel />}
+        {view === 'settings' && <SettingsPanel />}
+      </MainLayout>
+    </ThemeProvider>
   )
 }

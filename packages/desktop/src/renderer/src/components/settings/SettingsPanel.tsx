@@ -1,18 +1,12 @@
 import { useState, useEffect } from 'react'
-import { FolderOpen } from 'lucide-react'
+import { FolderOpen, Sun, Moon } from 'lucide-react'
+import { useTheme, type Theme } from '../../hooks/useTheme'
 
 export default function SettingsPanel() {
-  const [tasksDir, setTasksDir] = useState('')
+  const { theme, setTheme } = useTheme()
   const [version, setVersion] = useState('')
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Read current config from main process
-    window.api.getTasks().then((tasks) => {
-      setLoading(false)
-    }).catch(() => setLoading(false))
-
-    // For now, display static info — settings persistence can be added later
     setVersion('1.0.0')
   }, [])
 
@@ -42,6 +36,38 @@ export default function SettingsPanel() {
               <div className="text-xs text-[var(--color-text-dim)]">Electron + React</div>
             </div>
             <span className="text-sm text-[var(--color-text-bright)] font-mono">Desktop</span>
+          </div>
+
+          {/* Theme selector */}
+          <div className="flex items-center justify-between px-4 py-3">
+            <div>
+              <div className="text-sm text-[var(--color-text)]">Theme</div>
+              <div className="text-xs text-[var(--color-text-dim)]">Choose your preferred appearance</div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setTheme('dark')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  theme === 'dark'
+                    ? 'bg-[var(--color-blue)] text-white'
+                    : 'bg-[var(--color-hover)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                }`}
+              >
+                <Moon className="w-3 h-3" />
+                Dark
+              </button>
+              <button
+                onClick={() => setTheme('light')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  theme === 'light'
+                    ? 'bg-[var(--color-blue)] text-[var(--color-blue)] bg-opacity-10'
+                    : 'bg-[var(--color-hover)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                }`}
+              >
+                <Sun className="w-3 h-3" />
+                Light
+              </button>
+            </div>
           </div>
         </div>
       </section>

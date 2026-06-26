@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ─── Custom CSS Variables ─────────────────────────────── */
+/* ─── Theme: Dark (default) ───────────────────────────── */
 :root {
   --color-bg: #0d1117;
   --color-card: #161b22;
@@ -15,6 +15,25 @@
   --color-red: #f85149;
   --color-yellow: #d29922;
   --color-purple: #bc8cff;
+  color-scheme: dark;
+}
+
+/* ─── Theme: Light ────────────────────────────────────── */
+[data-theme="light"] {
+  --color-bg: #ffffff;
+  --color-card: #f6f8fa;
+  --color-border: #d0d7de;
+  --color-hover: #eaeef2;
+  --color-text: #1f2328;
+  --color-text-bright: #0d1117;
+  --color-text-muted: #656d76;
+  --color-text-dim: #8b949e;
+  --color-green: #1a7f37;
+  --color-blue: #0969da;
+  --color-red: #cf222e;
+  --color-yellow: #9a6700;
+  --color-purple: #8250df;
+  color-scheme: light;
 }
 
 body {
@@ -23,6 +42,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   overflow: hidden;
   user-select: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Allow text selection in content areas */
