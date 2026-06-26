@@ -21,6 +21,7 @@ export async function executeTask(
   const exec = config.execution
   const recordId = randomUUID()
 
+  // Build args array — no shell expansion to prevent command injection
   const args: string[] = [
     'run',
     '--dir', taskDir,
@@ -42,19 +43,21 @@ export async function executeTask(
 
   return new Promise((resolve) => {
     let combinedOutput = ''
+    let stderrOutput = ''
     const proc = spawn(opencodeBin, args, {
       cwd: taskDir,
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: (exec.timeout ?? 600) * 1000,
-      shell: true,
+      // NOTE: shell: true removed — prevents shell expansion injection
+      // in prompt content (e.g. $(...), backticks, semicolons)
     })
 
     proc.stdout?.on('data', (data: Buffer) => {
       combinedOutput += data.toString()
     })
 
-    proc.stderr?.on('data', () => {
-      // stderr handled via process completion
+    proc.stderr?.on('data', (data: Buffer) => {
+      stderrOutput += data.toString()
     })
 
     proc.on('close', (code) => {
@@ -64,13 +67,17 @@ export async function executeTask(
       record.output = combinedOutput.slice(-5000)
 
       if (code !== 0) {
-        record.error = `Process exited with code ${code}`
+        // Include stderr snippet in the error for easier debugging
+        const stderrHint = stderrOutput.slice(-500).trim()
+        record.error = stderrHint
+          ? `Process exited with code ${code}: ${stderrHint}`
+          : `Process exited with code ${code}`
       }
 
       resolve({
         record,
         stdout: combinedOutput,
-        stderr: '',
+        stderr: stderrOutput,
       })
     })
 

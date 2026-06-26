@@ -11,7 +11,9 @@
     "skill": "allow",
     "todowrite": "allow",
     "question": "ask",
-    "external_directory": "deny"
+    "external_directory": {
+      "5/**": "allow"
+    }
   },
   "instructions": [
     ".opencode/AGENTS.md"
