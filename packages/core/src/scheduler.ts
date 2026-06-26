@@ -39,7 +39,7 @@ export class Scheduler {
   start(): void {
     if (this.timer) return
     this.log('info', 'Scheduler started')
-    wwcEvents.emit('scheduler:started', undefined)
+    wwcEvents.emit('scheduler:started')
     this.tick()
     this.timer = setInterval(() => this.tick(), this.checkIntervalMs)
   }
@@ -49,7 +49,7 @@ export class Scheduler {
       clearInterval(this.timer)
       this.timer = null
       this.log('info', 'Scheduler stopped')
-      wwcEvents.emit('scheduler:stopped', undefined)
+      wwcEvents.emit('scheduler:stopped')
     }
   }
 
