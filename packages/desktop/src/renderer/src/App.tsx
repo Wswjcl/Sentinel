@@ -1,7 +1,10 @@
 import { useState, useCallback } from 'react'
 import type { TaskInfo } from '@wwc/core'
 import MainLayout from './components/layout/MainLayout'
+import TaskList from './components/tasks/TaskList'
 import TaskDetail from './components/tasks/TaskDetail'
+import SchedulerPanel from './components/scheduler/SchedulerPanel'
+import SettingsPanel from './components/settings/SettingsPanel'
 
 type View = 'tasks' | 'scheduler' | 'settings'
 
@@ -34,34 +37,8 @@ export default function App() {
       {view === 'tasks' && selectedTask && (
         <TaskDetail task={selectedTask} onBack={handleBack} />
       )}
-      {view === 'scheduler' && (
-        <SchedulerPlaceholder />
-      )}
-      {view === 'settings' && (
-        <SettingsPlaceholder />
-      )}
+      {view === 'scheduler' && <SchedulerPanel />}
+      {view === 'settings' && <SettingsPanel />}
     </MainLayout>
   )
 }
-
-// Temporary placeholders — will be replaced in commit 5
-function SchedulerPlaceholder() {
-  return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold text-[var(--color-text-bright)] mb-4">Scheduler</h1>
-      <p className="text-[var(--color-text-muted)]">Scheduler panel coming soon...</p>
-    </div>
-  )
-}
-
-function SettingsPlaceholder() {
-  return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold text-[var(--color-text-bright)] mb-4">Settings</h1>
-      <p className="text-[var(--color-text-muted)]">Settings panel coming soon...</p>
-    </div>
-  )
-}
-
-// Import TaskList lazily to avoid circular dep — will be in separate file
-import TaskList from './components/tasks/TaskList'
