@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/* ─── Custom CSS Variables ─────────────────────────────── */
+:root {
+  --color-bg: #0d1117;
+  --color-card: #161b22;
+  --color-border: #30363d;
+  --color-hover: #1c2129;
+  --color-text: #c9d1d9;
+  --color-text-bright: #f0f6fc;
+  --color-text-muted: #8b949e;
+  --color-text-dim: #484f58;
+  --color-green: #3fb950;
+  --color-blue: #58a6ff;
+  --color-red: #f85149;
+  --color-yellow: #d29922;
+  --color-purple: #bc8cff;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Allow text selection in content areas */
+.selectable {
+  user-select: text;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* Status dot pulse animation */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-pulse-dot {
+  animation: pulse 1.5s ease-in-out infinite;
+}
