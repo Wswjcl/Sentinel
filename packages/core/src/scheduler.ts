@@ -1,7 +1,8 @@
 import { TaskStore } from './task-store.js'
 import { executeTask } from './executor.js'
 import { shouldRunNow } from './cron.js'
-import type { TaskInfo } from './types.js'
+import { wwcEvents } from './events.js'
+import type { TaskInfo, TaskRunRecord, TaskStatus } from './types.js'
 
 export interface SchedulerOptions {
   taskStore: TaskStore
@@ -32,11 +33,13 @@ export class Scheduler {
 
   private log(level: string, msg: string): void {
     this.onLog?.(level, msg)
+    wwcEvents.emit('scheduler:log', { level, msg })
   }
 
   start(): void {
     if (this.timer) return
     this.log('info', 'Scheduler started')
+    wwcEvents.emit('scheduler:started', undefined)
     this.tick()
     this.timer = setInterval(() => this.tick(), this.checkIntervalMs)
   }
@@ -46,6 +49,7 @@ export class Scheduler {
       clearInterval(this.timer)
       this.timer = null
       this.log('info', 'Scheduler stopped')
+      wwcEvents.emit('scheduler:stopped', undefined)
     }
   }
 
@@ -86,6 +90,10 @@ export class Scheduler {
 
     this.running.add(name)
 
+    // Mark status as running
+    await this.store.setStatus(name, 'running')
+    wwcEvents.emit('task:status-changed', { name, status: 'running' })
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const result = await executeTask({
@@ -94,25 +102,44 @@ export class Scheduler {
           opencodeBin: this.opencodeBin,
         })
 
+        // Record EVERY attempt in history (not just the last one)
         const history = await this.store.getHistory(name)
         history.push(result.record)
         await this.store.saveHistory(name, history)
 
         if (result.record.status === 'success') {
+          await this.store.setStatus(name, 'scheduled')
+          wwcEvents.emit('task:run-completed', { name, record: result.record })
+          wwcEvents.emit('task:status-changed', { name, status: 'scheduled' })
           this.log('info', `Task ${name} completed successfully`)
           break
         } else {
+          wwcEvents.emit('task:run-completed', { name, record: result.record })
           this.log(
             'warn',
             `Task ${name} attempt ${attempt + 1}/${maxRetries + 1} failed: ${result.record.error}`,
           )
           if (attempt < maxRetries) {
+            await this.store.setStatus(name, 'failed')
+            wwcEvents.emit('task:status-changed', { name, status: 'failed' })
             await new Promise((r) => setTimeout(r, retryDelay * 1000))
+            await this.store.setStatus(name, 'running')
+            wwcEvents.emit('task:status-changed', { name, status: 'running' })
           }
         }
       } catch (err) {
         this.log('error', `Task ${name} error: ${String(err)}`)
+        const failStatus: TaskStatus = 'failed'
+        await this.store.setStatus(name, failStatus)
+        wwcEvents.emit('task:status-changed', { name, status: failStatus })
       }
+    }
+
+    // Final status if all retries exhausted and still not success
+    const finalInfo = await this.store.getTaskInfo(name)
+    if (finalInfo.status === 'running') {
+      await this.store.setStatus(name, 'failed')
+      wwcEvents.emit('task:status-changed', { name, status: 'failed' })
     }
 
     this.running.delete(name)

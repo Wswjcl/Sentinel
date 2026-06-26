@@ -12,7 +12,7 @@ export interface OpenCodePermission {
   question?: 'allow' | 'ask' | 'deny'
   todowrite?: 'allow' | 'ask' | 'deny'
   task?: 'allow' | 'ask' | 'deny' | Record<string, 'allow' | 'ask' | 'deny'>
-  external_directory?: 'allow' | 'ask' | 'deny' | Record<string, 'allow' | 'ask' | 'deny'>
+  external_directory?: 'allow' | 'ask' | 'deny' | Record<string, 'allow' | 'deny'>
   doom_loop?: 'allow' | 'ask' | 'deny'
 }
 
@@ -53,6 +53,21 @@ export interface GenerateOpenCodeOpts {
   skills?: string[]
 }
 
+/** Normalize an external directory path for OpenCode config */
+function normalizeExtPath(rawPath: string): string {
+  // Convert backslashes to forward slashes
+  let normalized = rawPath.replace(/\\/g, '/')
+  // Ensure paths end with /** for recursive access
+  if (normalized.includes('*')) {
+    // Path already has glob — ensure it ends with **
+    normalized = normalized.replace(/\*$/, '**')
+  } else {
+    // Plain path — append /**
+    normalized = normalized.replace(/\/+$/, '') + '/**'
+  }
+  return normalized
+}
+
 export function generateOpenCodeConfig(
   taskConfig: TaskConfig,
   opts?: GenerateOpenCodeOpts,
@@ -90,24 +105,27 @@ export function generateOpenCodeConfig(
     const toolRestrictions: Record<string, Record<string, 'allow' | 'deny'>> = {}
 
     for (const ed of opts.externalDirs) {
-      // Normalize path to use ** suffix for recursive access
-      const normalized = ed.path.replace(/\\/g, '/').replace(/\*$/, '**') + (ed.path.includes('*') ? '' : '/**')
+      const normalized = normalizeExtPath(ed.path)
       extDirs[normalized] = ed.permission
 
       if (ed.permission === 'allow') {
-        // If specific read/write/exec are set, apply tool-level restrictions
-        if (ed.read === false && !toolRestrictions.read) toolRestrictions.read = {}
-        if (ed.read === false) (toolRestrictions.read as Record<string, 'deny'>)[normalized] = 'deny'
-        if (ed.write === false && !toolRestrictions.edit) toolRestrictions.edit = {}
-        if (ed.write === false) (toolRestrictions.edit as Record<string, 'deny'>)[normalized] = 'deny'
-        if (ed.exec === false && !toolRestrictions.bash) toolRestrictions.bash = {}
-        if (ed.exec === false) (toolRestrictions.bash as Record<string, 'deny'>)[normalized] = 'deny'
+        if (ed.read === false) {
+          if (!toolRestrictions.read) toolRestrictions.read = {}
+          toolRestrictions.read[normalized] = 'deny'
+        }
+        if (ed.write === false) {
+          if (!toolRestrictions.edit) toolRestrictions.edit = {}
+          toolRestrictions.edit[normalized] = 'deny'
+        }
+        if (ed.exec === false) {
+          if (!toolRestrictions.bash) toolRestrictions.bash = {}
+          toolRestrictions.bash[normalized] = 'deny'
+        }
       }
     }
 
     perm.external_directory = extDirs
 
-    // Merge tool-level restrictions (these restrict specific tools on external paths)
     for (const [tool, rules] of Object.entries(toolRestrictions)) {
       if (Object.keys(rules).length > 0) {
         ;(perm as Record<string, Record<string, 'allow' | 'deny'>>)[tool] = rules
@@ -122,7 +140,7 @@ export function generateOpenCodeConfig(
     permission: perm,
     instructions: ['.opencode/AGENTS.md'],
     watcher: {
-      ignore: ['output/**', '.history.json'],
+      ignore: ['output/**', '.history.json', '.status.json'],
     },
   }
 
@@ -173,7 +191,7 @@ export const OPENCODE_CONFIG_TEMPLATE = `{
   },
   "instructions": [".opencode/AGENTS.md"],
   "watcher": {
-    "ignore": ["output/**", ".history.json"]
+    "ignore": ["output/**", ".history.json", ".status.json"]
   }
 }
 `
