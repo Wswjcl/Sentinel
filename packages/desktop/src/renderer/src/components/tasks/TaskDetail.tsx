@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { TaskInfo, TaskStatus, TaskRunRecord } from '@sentinel/core'
 import { ArrowLeft, Play, Trash2, RefreshCw, FolderOpen, FileText, Clock } from 'lucide-react'
+import { useI18n } from '../../hooks/useI18n'
 import type { TreeNode, OutputFile } from '../../../shared/ipc-types'
 
 interface TaskDetailProps {
@@ -9,16 +10,6 @@ interface TaskDetailProps {
 }
 
 type Tab = 'overview' | 'workspace' | 'outputs' | 'history' | 'config'
-
-const statusLabel: Record<TaskStatus, string> = {
-  pending: 'Pending',
-  scheduled: 'Scheduled',
-  running: 'Running',
-  success: 'Success',
-  failed: 'Failed',
-  paused: 'Paused',
-  archived: 'Archived',
-}
 
 const statusColor: Record<TaskStatus, string> = {
   pending: 'text-[var(--color-text-muted)]',
@@ -49,6 +40,7 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
   const [selectedOutput, setSelectedOutput] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const { t } = useI18n()
 
   const name = task.config.name
 
@@ -93,7 +85,7 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
   }
 
   const handleDelete = async () => {
-    if (!confirm(`Delete task "${name}" and all its data?`)) return
+    if (!confirm(t('task.deleteConfirm', { name }))) return
     setDeleting(true)
     try {
       await window.api.deleteTask(name)
@@ -110,16 +102,16 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
       const content = await window.api.readTaskOutput(name, filename)
       setOutputContent(content)
     } catch (err) {
-      setOutputContent(`Error reading file: ${err}`)
+      setOutputContent(t('detail.errorReadingFile', { error: String(err) }))
     }
   }
 
   const tabs: { id: Tab; label: string; icon: typeof FolderOpen }[] = [
-    { id: 'overview', label: 'Overview', icon: FileText },
-    { id: 'workspace', label: 'Files', icon: FolderOpen },
-    { id: 'outputs', label: 'Outputs', icon: FileText },
-    { id: 'history', label: 'History', icon: Clock },
-    { id: 'config', label: 'Config', icon: RefreshCw },
+    { id: 'overview', label: t('detail.overview'), icon: FileText },
+    { id: 'workspace', label: t('detail.files'), icon: FolderOpen },
+    { id: 'outputs', label: t('detail.outputs'), icon: FileText },
+    { id: 'history', label: t('detail.history'), icon: Clock },
+    { id: 'config', label: t('detail.config'), icon: RefreshCw },
   ]
 
   return (
@@ -137,7 +129,7 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
             <h1 className="text-lg font-semibold text-[var(--color-text-bright)] truncate">{name}</h1>
             <div className={`flex items-center gap-1 ${statusColor[task.status]}`}>
               <div className={`w-1.5 h-1.5 rounded-full ${statusDot[task.status]} ${task.status === 'running' ? 'animate-pulse-dot' : ''}`} />
-              <span className="text-xs font-medium">{statusLabel[task.status]}</span>
+              <span className="text-xs font-medium">{t(`status.${task.status}`)}</span>
             </div>
           </div>
           {task.config.description && (
@@ -150,7 +142,7 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
           <button
             onClick={refreshTask}
             className="p-1.5 rounded hover:bg-[var(--color-hover)] text-[var(--color-text-muted)] transition-colors"
-            title="Refresh"
+            title={t('task.refresh')}
           >
             <RefreshCw className="w-4 h-4" />
           </button>
@@ -162,13 +154,13 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
                        disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
           >
             <Play className="w-3 h-3" />
-            {running ? 'Running...' : 'Run Now'}
+            {running ? t('task.running') : t('task.runNow')}
           </button>
           <button
             onClick={handleDelete}
             disabled={deleting}
             className="p-1.5 rounded hover:bg-[var(--color-hover)] text-[var(--color-red)] transition-colors"
-            title="Delete task"
+            title={t('task.deleteTask')}
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -216,26 +208,27 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
 
 function OverviewTab({ task }: { task: TaskInfo }) {
   const { config, status, lastRun, nextRun, runCount } = task
+  const { t } = useI18n()
 
   const fields = [
-    { label: 'Status', value: statusLabel[status] },
-    { label: 'Schedule', value: `${config.schedule.type}: ${config.schedule.expr}` },
-    { label: 'Timezone', value: config.schedule.timezone ?? 'UTC' },
-    { label: 'Model', value: config.execution.model ?? 'default' },
-    { label: 'Agent', value: config.execution.agent ?? 'default' },
-    { label: 'Timeout', value: config.execution.timeout ? `${config.execution.timeout / 1000}s` : 'none' },
-    { label: 'Retry', value: config.execution.retry ? `${config.execution.retry.max}x / ${config.execution.retry.delay}ms` : 'none' },
-    { label: 'Runs', value: String(runCount) },
-    { label: 'Last Run', value: lastRun ? new Date(lastRun).toLocaleString() : '—' },
-    { label: 'Next Run', value: nextRun ? new Date(nextRun).toLocaleString() : '—' },
-    { label: 'Directory', value: task.dir },
+    { label: t('detail.status'), value: t(`status.${status}`) },
+    { label: t('detail.schedule'), value: `${config.schedule.type}: ${config.schedule.expr}` },
+    { label: t('detail.timezone'), value: config.schedule.timezone ?? 'UTC' },
+    { label: t('detail.model'), value: config.execution.model ?? 'default' },
+    { label: t('detail.agent'), value: config.execution.agent ?? 'default' },
+    { label: t('detail.timeout'), value: config.execution.timeout ? `${config.execution.timeout / 1000}s` : t('task.none') },
+    { label: t('detail.retry'), value: config.execution.retry ? `${config.execution.retry.max}x / ${config.execution.retry.delay}ms` : t('task.none') },
+    { label: t('detail.runs'), value: String(runCount) },
+    { label: t('detail.lastRun'), value: lastRun ? new Date(lastRun).toLocaleString() : '—' },
+    { label: t('detail.nextRun'), value: nextRun ? new Date(nextRun).toLocaleString() : '—' },
+    { label: t('detail.directory'), value: task.dir },
   ]
 
   return (
     <div className="space-y-4">
       {/* Prompt */}
       <div>
-        <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">Prompt</h3>
+        <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">{t('detail.prompt')}</h3>
         <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-3">
           <p className="text-sm text-[var(--color-text)] whitespace-pre-wrap">{config.execution.prompt}</p>
         </div>
@@ -243,7 +236,7 @@ function OverviewTab({ task }: { task: TaskInfo }) {
 
       {/* Info grid */}
       <div>
-        <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">Details</h3>
+        <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">{t('detail.details')}</h3>
         <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg divide-y divide-[var(--color-border)]">
           {fields.map(({ label, value }) => (
             <div key={label} className="flex items-center px-3 py-2">
@@ -260,11 +253,13 @@ function OverviewTab({ task }: { task: TaskInfo }) {
 // ─── Workspace Tab ─────────────────────────────────────────────────
 
 function WorkspaceTab({ tree }: { tree: TreeNode[] }) {
+  const { t } = useI18n()
+
   return (
     <div>
-      <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">File Tree</h3>
+      <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">{t('detail.fileTree')}</h3>
       {tree.length === 0 ? (
-        <p className="text-sm text-[var(--color-text-dim)]">Empty workspace</p>
+        <p className="text-sm text-[var(--color-text-dim)]">{t('detail.emptyWorkspace')}</p>
       ) : (
         <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-3">
           <TreeNodes nodes={tree} depth={0} />
@@ -310,15 +305,17 @@ function OutputsTab({
   outputContent: string | null
   onSelect: (filename: string) => void
 }) {
+  const { t } = useI18n()
+
   if (outputs.length === 0) {
-    return <p className="text-sm text-[var(--color-text-dim)]">No output files yet</p>
+    return <p className="text-sm text-[var(--color-text-dim)]">{t('detail.noOutputFiles')}</p>
   }
 
   return (
     <div className="space-y-4">
       {/* File list */}
       <div>
-        <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">Output Files</h3>
+        <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">{t('detail.outputFiles')}</h3>
         <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg divide-y divide-[var(--color-border)]">
           {outputs.map((file) => (
             <button
@@ -363,14 +360,16 @@ function formatSize(bytes: number): string {
 // ─── History Tab ───────────────────────────────────────────────────
 
 function HistoryTab({ history }: { history: TaskRunRecord[] }) {
+  const { t } = useI18n()
+
   if (history.length === 0) {
-    return <p className="text-sm text-[var(--color-text-dim)]">No run history yet</p>
+    return <p className="text-sm text-[var(--color-text-dim)]">{t('detail.noHistory')}</p>
   }
 
   return (
     <div>
       <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">
-        Run History ({history.length})
+        {t('detail.runHistory', { count: history.length })}
       </h3>
       <div className="space-y-2">
         {[...history].reverse().map((record) => (
@@ -386,11 +385,11 @@ function HistoryTab({ history }: { history: TaskRunRecord[] }) {
                   'bg-[var(--color-blue)]'
                 }`} />
                 <span className="text-sm font-medium text-[var(--color-text)]">
-                  {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                  {t(`status.${record.status}`)}
                 </span>
                 {record.exitCode !== undefined && (
                   <span className="text-xs text-[var(--color-text-dim)]">
-                    exit {record.exitCode}
+                    {t('detail.exit')} {record.exitCode}
                   </span>
                 )}
               </div>
@@ -403,7 +402,7 @@ function HistoryTab({ history }: { history: TaskRunRecord[] }) {
             )}
             {record.finishedAt && (
               <p className="text-xs text-[var(--color-text-dim)] mt-1">
-                Duration: {Math.round(new Date(record.finishedAt).getTime() - new Date(record.startedAt).getTime()) / 1000}s
+                {t('detail.duration')} {Math.round(new Date(record.finishedAt).getTime() - new Date(record.startedAt).getTime()) / 1000}s
               </p>
             )}
           </div>
@@ -420,6 +419,7 @@ function ConfigTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => void 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
+  const { t } = useI18n()
 
   useEffect(() => {
     window.api.getOpenCodeConfig(task.config.name).then((c) => {
@@ -448,7 +448,7 @@ function ConfigTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => void 
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <h3 className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
-            OpenCode Config (.opencode/opencode.json)
+            {t('detail.opencodeConfig')}
           </h3>
           <button
             onClick={handleSave}
@@ -456,7 +456,7 @@ function ConfigTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => void 
             className="px-3 py-1 rounded text-xs font-medium bg-[var(--color-blue)] text-[var(--color-bg)]
                        hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
           >
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? t('detail.saving') : t('detail.save')}
           </button>
         </div>
         <textarea
@@ -475,7 +475,7 @@ function ConfigTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => void 
       {/* Task YAML (read-only display) */}
       <div>
         <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">
-          Task Config (task.yaml)
+          {t('detail.taskConfig')}
         </h3>
         <pre className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-3 text-xs text-[var(--color-text-dim)] font-mono overflow-x-auto">
           {JSON.stringify(task.config, null, 2)}

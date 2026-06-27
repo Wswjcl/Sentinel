@@ -1,27 +1,38 @@
 import type { TaskInfo, TaskStatus } from '@sentinel/core'
+import { useI18n } from '../../hooks/useI18n'
 
 interface TaskCardProps {
   task: TaskInfo
   onClick: () => void
 }
 
-const statusConfig: Record<TaskStatus, { label: string; color: string; bg: string }> = {
-  pending:   { label: 'Pending',   color: 'text-[var(--color-text-muted)]', bg: 'bg-[var(--color-text-dim)]' },
-  scheduled: { label: 'Scheduled', color: 'text-[var(--color-blue)]',        bg: 'bg-[var(--color-blue)]' },
-  running:   { label: 'Running',   color: 'text-[var(--color-green)]',       bg: 'bg-[var(--color-green)]' },
-  success:   { label: 'Success',   color: 'text-[var(--color-green)]',       bg: 'bg-[var(--color-green)]' },
-  failed:    { label: 'Failed',    color: 'text-[var(--color-red)]',         bg: 'bg-[var(--color-red)]' },
-  paused:    { label: 'Paused',    color: 'text-[var(--color-yellow)]',      bg: 'bg-[var(--color-yellow)]' },
-  archived:  { label: 'Archived',  color: 'text-[var(--color-text-dim)]',    bg: 'bg-[var(--color-text-dim)]' },
+const statusColor: Record<TaskStatus, string> = {
+  pending:   'text-[var(--color-text-muted)]',
+  scheduled: 'text-[var(--color-blue)]',
+  running:   'text-[var(--color-green)]',
+  success:   'text-[var(--color-green)]',
+  failed:    'text-[var(--color-red)]',
+  paused:    'text-[var(--color-yellow)]',
+  archived:  'text-[var(--color-text-dim)]',
 }
 
-function formatRelativeTime(iso?: string): string {
+const statusBg: Record<TaskStatus, string> = {
+  pending:   'bg-[var(--color-text-dim)]',
+  scheduled: 'bg-[var(--color-blue)]',
+  running:   'bg-[var(--color-green)]',
+  success:   'bg-[var(--color-green)]',
+  failed:    'bg-[var(--color-red)]',
+  paused:    'bg-[var(--color-yellow)]',
+  archived:  'bg-[var(--color-text-dim)]',
+}
+
+function formatRelativeTime(iso: string | undefined, t: ReturnType<typeof useI18n>['t']): string {
   if (!iso) return '—'
   const diff = Date.now() - new Date(iso).getTime()
   const absDiff = Math.abs(diff)
-  const prefix = diff > 0 ? '' : 'in '
+  const prefix = diff > 0 ? '' : t('task.in')
 
-  if (absDiff < 60_000) return diff > 0 ? 'just now' : 'soon'
+  if (absDiff < 60_000) return diff > 0 ? t('task.justNow') : t('task.soon')
   if (absDiff < 3_600_000) return `${prefix}${Math.floor(absDiff / 60_000)}m`
   if (absDiff < 86_400_000) return `${prefix}${Math.floor(absDiff / 3_600_000)}h`
   return `${prefix}${Math.floor(absDiff / 86_400_000)}d`
@@ -29,7 +40,7 @@ function formatRelativeTime(iso?: string): string {
 
 export default function TaskCard({ task, onClick }: TaskCardProps) {
   const { config, status, lastRun, nextRun, runCount } = task
-  const sc = statusConfig[status] ?? statusConfig.pending
+  const { t } = useI18n()
 
   return (
     <button
@@ -45,8 +56,8 @@ export default function TaskCard({ task, onClick }: TaskCardProps) {
           </span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <div className={`w-1.5 h-1.5 rounded-full ${sc.bg} ${status === 'running' ? 'animate-pulse-dot' : ''}`} />
-          <span className={`text-xs font-medium ${sc.color}`}>{sc.label}</span>
+          <div className={`w-1.5 h-1.5 rounded-full ${statusBg[status]} ${status === 'running' ? 'animate-pulse-dot' : ''}`} />
+          <span className={`text-xs font-medium ${statusColor[status]}`}>{t(`status.${status}`)}</span>
         </div>
       </div>
 
@@ -59,20 +70,20 @@ export default function TaskCard({ task, onClick }: TaskCardProps) {
 
       {/* Meta row */}
       <div className="flex items-center gap-4 text-[10px] text-[var(--color-text-dim)]">
-        <span title="Schedule">
+        <span title={t('task.schedule')}>
           {config.schedule.type}: {config.schedule.expr}
         </span>
-        <span title="Run count">
-          {runCount} run{runCount !== 1 ? 's' : ''}
+        <span title={t('task.runCountTitle')}>
+          {t('task.runCount', { count: runCount })}
         </span>
         {lastRun && (
-          <span title="Last run">
-            last {formatRelativeTime(lastRun)}
+          <span title={t('task.lastRunTitle')}>
+            {t('task.lastRun')} {formatRelativeTime(lastRun, t)}
           </span>
         )}
         {nextRun && status !== 'running' && (
-          <span title="Next run">
-            next {formatRelativeTime(nextRun)}
+          <span title={t('task.nextRunTitle')}>
+            {t('task.nextRun')} {formatRelativeTime(nextRun, t)}
           </span>
         )}
       </div>

@@ -19,10 +19,12 @@
     "build:linux": "npm run build && electron-builder --linux"
   },
   "dependencies": {
-    "@sentinel/core": "*",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
-    "electron-updater": "^6.3.9"
+    "@sentinel/core": "*",
+    "electron-updater": "^6.3.9",
+    "i18next": "^26.3.3",
+    "react-i18next": "^17.0.8"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",

@@ -1,5 +1,6 @@
 import { Clock, Settings, ListTodo } from 'lucide-react'
 import { useScheduler } from '../../hooks/useScheduler'
+import { useI18n } from '../../hooks/useI18n'
 
 interface SidebarProps {
   currentView: string
@@ -8,11 +9,12 @@ interface SidebarProps {
 
 export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
   const { status } = useScheduler()
+  const { t } = useI18n()
 
   const navItems = [
-    { id: 'tasks' as const, label: 'Tasks', icon: ListTodo },
-    { id: 'scheduler' as const, label: 'Scheduler', icon: Clock },
-    { id: 'settings' as const, label: 'Settings', icon: Settings },
+    { id: 'tasks' as const, label: t('sidebar.tasks'), icon: ListTodo },
+    { id: 'scheduler' as const, label: t('sidebar.scheduler'), icon: Clock },
+    { id: 'settings' as const, label: t('sidebar.settings'), icon: Settings },
   ]
 
   return (
@@ -46,7 +48,7 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
             }`}
           />
           <span className="text-[var(--color-text-muted)]">
-            {status.running ? 'Scheduler: Running' : 'Scheduler: Off'}
+            {status.running ? t('sidebar.schedulerRunning') : t('sidebar.schedulerOff')}
           </span>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Play, Square, Trash2 } from 'lucide-react'
 import { useScheduler } from '../../hooks/useScheduler'
+import { useI18n } from '../../hooks/useI18n'
 
 interface LogEntry {
   level: string
@@ -13,6 +14,7 @@ export default function SchedulerPanel() {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [autoScroll, setAutoScroll] = useState(true)
   const logContainerRef = useRef<HTMLDivElement>(null)
+  const { t } = useI18n()
 
   // Subscribe to scheduler logs
   useEffect(() => {
@@ -58,9 +60,9 @@ export default function SchedulerPanel() {
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-text-bright)]">Scheduler</h1>
+          <h1 className="text-xl font-semibold text-[var(--color-text-bright)]">{t('scheduler.title')}</h1>
           <p className="text-sm text-[var(--color-text-muted)] mt-1">
-            Manage the task scheduler and monitor real-time activity
+            {t('scheduler.description')}
           </p>
         </div>
         <button
@@ -74,12 +76,12 @@ export default function SchedulerPanel() {
           {status.running ? (
             <>
               <Square className="w-3.5 h-3.5" />
-              Stop Scheduler
+              {t('scheduler.stop')}
             </>
           ) : (
             <>
               <Play className="w-3.5 h-3.5" />
-              Start Scheduler
+              {t('scheduler.start')}
             </>
           )}
         </button>
@@ -97,12 +99,10 @@ export default function SchedulerPanel() {
           />
           <div>
             <div className="text-sm font-medium text-[var(--color-text-bright)]">
-              {status.running ? 'Scheduler is running' : 'Scheduler is stopped'}
+              {status.running ? t('scheduler.isRunning') : t('scheduler.isStopped')}
             </div>
             <div className="text-xs text-[var(--color-text-muted)]">
-              {status.running
-                ? 'Tasks are being executed according to their schedules'
-                : 'Click "Start Scheduler" to begin processing tasks'}
+              {status.running ? t('scheduler.runningDesc') : t('scheduler.stoppedDesc')}
             </div>
           </div>
         </div>
@@ -112,16 +112,16 @@ export default function SchedulerPanel() {
       <div className="flex-1 min-h-0 flex flex-col">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
-            Live Log
+            {t('scheduler.liveLog')}
           </h2>
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-[var(--color-text-dim)]">
-              {logs.length} entr{logs.length !== 1 ? 'ies' : 'y'}
+              {t('scheduler.logCount', { count: logs.length })}
             </span>
             <button
               onClick={handleClearLogs}
               className="p-1 rounded hover:bg-[var(--color-hover)] text-[var(--color-text-dim)] transition-colors"
-              title="Clear logs"
+              title={t('scheduler.clearLogs')}
             >
               <Trash2 className="w-3 h-3" />
             </button>
@@ -134,7 +134,7 @@ export default function SchedulerPanel() {
         >
           {logs.length === 0 ? (
             <div className="text-[var(--color-text-dim)]">
-              {status.running ? 'Waiting for scheduler events...' : 'Start the scheduler to see logs'}
+              {status.running ? t('scheduler.waitingEvents') : t('scheduler.startToSeeLogs')}
             </div>
           ) : (
             logs.map((entry, i) => (
@@ -153,7 +153,7 @@ export default function SchedulerPanel() {
             className="self-center mt-2 px-3 py-1 text-xs bg-[var(--color-hover)] border border-[var(--color-border)]
                        rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
           >
-            ↓ Scroll to bottom
+            {t('scheduler.scrollToBottom')}
           </button>
         )}
       </div>

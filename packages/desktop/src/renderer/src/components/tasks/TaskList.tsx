@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { TaskInfo } from '@sentinel/core'
 import { useTasks } from '../../hooks/useTasks'
+import { useI18n } from '../../hooks/useI18n'
 import TaskCard from './TaskCard'
 import CreateTaskDialog from './CreateTaskDialog'
 
@@ -12,6 +13,7 @@ export default function TaskList({ onSelect }: TaskListProps) {
   const { tasks, loading, refresh } = useTasks()
   const [showCreate, setShowCreate] = useState(false)
   const [search, setSearch] = useState('')
+  const { t } = useI18n()
 
   const filtered = tasks.filter((t) =>
     t.config.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -25,7 +27,7 @@ export default function TaskList({ onSelect }: TaskListProps) {
         <div className="flex-1 relative">
           <input
             type="text"
-            placeholder="Search tasks..."
+            placeholder={t('task.search')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
@@ -38,22 +40,22 @@ export default function TaskList({ onSelect }: TaskListProps) {
           className="px-4 py-1.5 bg-[var(--color-green)] text-[var(--color-bg)] rounded-lg text-sm font-medium
                      hover:opacity-90 transition-opacity shrink-0"
         >
-          + New Task
+          {t('task.newTask')}
         </button>
       </div>
 
       {/* Content */}
       {loading ? (
         <div className="flex items-center justify-center h-48 text-[var(--color-text-muted)] text-sm">
-          Loading tasks...
+          {t('task.loading')}
         </div>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-48 text-[var(--color-text-dim)]">
           <p className="text-sm mb-1">
-            {tasks.length === 0 ? 'No tasks yet' : 'No matching tasks'}
+            {tasks.length === 0 ? t('task.noTasks') : t('task.noMatching')}
           </p>
           {tasks.length === 0 && (
-            <p className="text-xs">Create your first task to get started</p>
+            <p className="text-xs">{t('task.createFirst')}</p>
           )}
         </div>
       ) : (
