@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "bin": {
-    "sentinel": "./dist/index.js"
+    "sentinel": "./dist/index.js",
+    "wwc": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",

@@ -11,6 +11,7 @@ const program = new Command()
 
 program
   .name('sentinel')
+  .aliases(['wwc'])
   .description('AI-powered task scheduler — schedule tasks that run via OpenCode agents')
   .version('1.0.0')
 
