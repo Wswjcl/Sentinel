@@ -37,6 +37,10 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
       setError(t('create.promptRequired'))
       return
     }
+    if (!projectDir.trim()) {
+      setError(t('create.projectDirRequired'))
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -117,7 +121,7 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
           {/* Project directory */}
           <div>
             <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
-              {t('create.projectDir')}
+              {t('create.projectDir')} <span className="text-[var(--color-red)]">*</span>
             </label>
             <input
               type="text"
