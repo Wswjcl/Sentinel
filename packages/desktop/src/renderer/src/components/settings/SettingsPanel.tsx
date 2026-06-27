@@ -14,7 +14,7 @@ export default function SettingsPanel() {
     <div className="p-6 max-w-2xl">
       <h1 className="text-xl font-semibold text-[var(--color-text-bright)] mb-1">Settings</h1>
       <p className="text-sm text-[var(--color-text-muted)] mb-6">
-        Configure WWC desktop application preferences
+        Configure Sentinel desktop application preferences
       </p>
 
       {/* Application info */}
@@ -88,7 +88,7 @@ export default function SettingsPanel() {
             </div>
           </div>
           <div className="bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text)] font-mono break-all">
-            Configured via WWC_TASKS_DIR environment variable or CLI flag
+            Configured via SENTINEL_TASKS_DIR environment variable or CLI flag
           </div>
         </div>
       </section>

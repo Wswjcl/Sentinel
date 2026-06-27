@@ -9,7 +9,7 @@ export default function TitleBar() {
       className="h-[40px] flex items-center justify-between bg-[var(--color-bg)] border-b border-[var(--color-border)] px-4 select-none"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
-      <span className="text-sm text-[var(--color-text-muted)]">WWC AI Scheduler</span>
+      <span className="text-sm text-[var(--color-text-muted)]">Sentinel AI Scheduler</span>
 
       <div
         className="flex items-center gap-1"

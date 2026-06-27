@@ -1,5 +1,5 @@
 {
-  "name": "wwc",
+  "name": "sentinel",
   "version": "1.0.0",
   "private": true,
   "description": "AI-powered task scheduler - schedule tasks that run via OpenCode agents",

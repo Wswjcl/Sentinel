@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import type { TaskInfo } from '@wwc/core'
+import type { TaskInfo } from '@sentinel/core'
 
 export function useTasks() {
   const [tasks, setTasks] = useState<TaskInfo[]>([])

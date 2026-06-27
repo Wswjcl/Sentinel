@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { TaskStore, executeTask } from '@wwc/core'
+import { TaskStore, executeTask } from '@sentinel/core'
 import chalk from 'chalk'
 
 export const runCommand = new Command('run')

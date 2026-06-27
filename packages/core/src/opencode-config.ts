@@ -1,4 +1,4 @@
-import type { TaskConfig } from '@wwc/core'
+import type { TaskConfig } from '@sentinel/core'
 
 export interface OpenCodePermission {
   bash?: 'allow' | 'ask' | 'deny' | Record<string, 'allow' | 'ask' | 'deny'>

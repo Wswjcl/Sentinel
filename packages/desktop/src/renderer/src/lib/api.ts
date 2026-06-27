@@ -8,7 +8,7 @@ import type {
   TaskInfo,
   TaskRunRecord,
   TaskStatus,
-} from '@wwc/core'
+} from '@sentinel/core'
 import type {
   CreateTaskOpts,
   TreeNode,

@@ -1,4 +1,4 @@
-# WWC — AI Task Scheduler
+# Sentinel — AI Task Scheduler
 
 基于 OpenCode + LLM 的定时任务调度系统。每个任务 = 一个独立目录（含 tools + skills），定时触发后自动调用 OpenCode CLI 执行。
 
@@ -24,7 +24,7 @@ npm run dev
 
 ## 桌面应用
 
-v1.0.0 新增 `@wwc/desktop` — 基于 Electron + React + Tailwind 的原生桌面客户端。
+v1.0.0 新增 `@sentinel/desktop` — 基于 Electron + React + Tailwind 的原生桌面客户端。
 
 ### 功能
 
@@ -44,7 +44,7 @@ v1.0.0 新增 `@wwc/desktop` — 基于 Electron + React + Tailwind 的原生桌
 │  Electron Main Process                  │
 │  - TaskStore / Scheduler (直接调用 core) │
 │  - IPC Handlers                         │
-│  - wwcEvents → webContents.send()       │
+│  - sentinelEvents → webContents.send()       │
 ├─────────────────────────────────────────┤
 │  Preload (contextBridge)                │
 │  - ExposedAPI (类型安全 IPC 封装)        │
@@ -131,12 +131,12 @@ tasks/my-task/
 ## 项目结构
 
 ```
-wwc/
+sentinel/
 ├── DESIGN.md                    # 详细设计文档
 ├── README.md                    # 本文件
 ├── package.json                 # npm workspaces 根
 ├── packages/
-│   ├── core/                    # @wwc/core 核心引擎
+│   ├── core/                    # @sentinel/core 核心引擎
 │   │   └── src/
 │   │       ├── types.ts         # 类型定义
 │   │       ├── events.ts        # 类型安全事件总线 (v1.0.0 新增)
@@ -145,11 +145,11 @@ wwc/
 │   │       ├── executor.ts      # OpenCode 执行器
 │   │       ├── scheduler.ts     # 调度引擎
 │   │       └── opencode-config.ts # OpenCode 配置生成器
-│   ├── cli/                     # @wwc/cli 命令行
+│   ├── cli/                     # @sentinel/cli 命令行
 │   │   └── src/
 │   │       ├── index.ts         # 入口
 │   │       └── commands/        # 所有命令实现
-│   └── desktop/                 # @wwc/desktop 桌面应用 (v1.0.0 新增)
+│   └── desktop/                 # @sentinel/desktop 桌面应用 (v1.0.0 新增)
 │       ├── src/
 │       │   ├── main/            # Electron 主进程
 │       │   ├── preload/         # Context Bridge
@@ -165,9 +165,9 @@ wwc/
 
 | 变更 | 说明 |
 |------|------|
-| 🆕 `@wwc/desktop` | Electron + React + Tailwind 桌面应用 |
+| 🆕 `@sentinel/desktop` | Electron + React + Tailwind 桌面应用 |
 | 🗑️ `serve` 命令 | 移除 Web Dashboard，改用桌面应用 |
-| 🆕 类型安全事件总线 | `wwcEvents` (EventEmitter + 泛型) |
+| 🆕 类型安全事件总线 | `sentinelEvents` (EventEmitter + 泛型) |
 | 🆕 持久化状态 | `.status.json` 文件，崩溃恢复 `running → failed` |
 | 🔒 路径遍历防护 | `isValidTaskName()` + `safeTaskPath()` |
 | 🔒 命令注入防护 | `spawn()` 移除 `shell: true` |
@@ -178,13 +178,13 @@ wwc/
 
 | 包 | 依赖 | 用途 |
 |---|---|---|
-| `@wwc/core` | cron-parser, yaml | cron 调度 + YAML 读写 + 事件系统 |
-| `@wwc/cli` | commander, chalk, yaml | CLI 工具 |
-| `@wwc/desktop` | electron, react, tailwindcss, lucide-react | 桌面客户端 |
+| `@sentinel/core` | cron-parser, yaml | cron 调度 + YAML 读写 + 事件系统 |
+| `@sentinel/cli` | commander, chalk, yaml | CLI 工具 |
+| `@sentinel/desktop` | electron, react, tailwindcss, lucide-react | 桌面客户端 |
 
 ## 配合 OpenCode
 
-WWC 依赖你本地已安装的 [OpenCode](https://opencode.ai)。确保 `opencode` 在 PATH 中可用：
+Sentinel 依赖你本地已安装的 [OpenCode](https://opencode.ai)。确保 `opencode` 在 PATH 中可用：
 
 ```bash
 opencode --version   # 确认已安装
@@ -196,7 +196,7 @@ opencode --version   # 确认已安装
 
 ```
                           ┌─────────────────┐
-                          │  wwc create     │
+                          │  sentinel create     │
                           │  创建任务        │
                           └────────┬────────┘
                                    │
@@ -210,7 +210,7 @@ opencode --version   # 确认已安装
                           │   状态: pending  │
                           └────────┬────────┘
                                    │
-                                   │ wwc scheduler start
+                                   │ sentinel scheduler start
                                    ▼
                     ┌──────────────────────────┐
                     │     调度器 每分钟扫描      │

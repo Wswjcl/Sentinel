@@ -1,5 +1,5 @@
-appId: com.wwc.desktop
-productName: WWC
+appId: com.sentinel.desktop
+productName: Sentinel
 directories:
   buildResources: resources
 files:
@@ -9,7 +9,7 @@ files:
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 win:
-  executableName: wwc
+  executableName: sentinel
   target:
     - target: nsis
       arch:
@@ -35,7 +35,7 @@ linux:
     - target: deb
       arch:
         - x64
-  maintainer: wwc.dev
+  maintainer: sentinel.dev
   category: Utility
 publish:
   provider: github

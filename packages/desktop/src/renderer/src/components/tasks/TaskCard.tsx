@@ -1,4 +1,4 @@
-import type { TaskInfo, TaskStatus } from '@wwc/core'
+import type { TaskInfo, TaskStatus } from '@sentinel/core'
 
 interface TaskCardProps {
   task: TaskInfo

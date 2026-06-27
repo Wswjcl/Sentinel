@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { TaskInfo } from '@wwc/core'
+import type { TaskInfo } from '@sentinel/core'
 import { useTasks } from '../../hooks/useTasks'
 import TaskCard from './TaskCard'
 import CreateTaskDialog from './CreateTaskDialog'

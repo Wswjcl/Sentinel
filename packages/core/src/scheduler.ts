@@ -1,7 +1,7 @@
 import { TaskStore } from './task-store.js'
 import { executeTask } from './executor.js'
 import { shouldRunNow } from './cron.js'
-import { wwcEvents } from './events.js'
+import { sentinelEvents } from './events.js'
 import type { TaskInfo, TaskRunRecord, TaskStatus } from './types.js'
 
 export interface SchedulerOptions {
@@ -33,13 +33,13 @@ export class Scheduler {
 
   private log(level: string, msg: string): void {
     this.onLog?.(level, msg)
-    wwcEvents.emit('scheduler:log', { level, msg })
+    sentinelEvents.emit('scheduler:log', { level, msg })
   }
 
   start(): void {
     if (this.timer) return
     this.log('info', 'Scheduler started')
-    wwcEvents.emit('scheduler:started')
+    sentinelEvents.emit('scheduler:started')
     this.tick()
     this.timer = setInterval(() => this.tick(), this.checkIntervalMs)
   }
@@ -49,7 +49,7 @@ export class Scheduler {
       clearInterval(this.timer)
       this.timer = null
       this.log('info', 'Scheduler stopped')
-      wwcEvents.emit('scheduler:stopped')
+      sentinelEvents.emit('scheduler:stopped')
     }
   }
 
@@ -92,7 +92,7 @@ export class Scheduler {
 
     // Mark status as running
     await this.store.setStatus(name, 'running')
-    wwcEvents.emit('task:status-changed', { name, status: 'running' })
+    sentinelEvents.emit('task:status-changed', { name, status: 'running' })
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -109,29 +109,29 @@ export class Scheduler {
 
         if (result.record.status === 'success') {
           await this.store.setStatus(name, 'scheduled')
-          wwcEvents.emit('task:run-completed', { name, record: result.record })
-          wwcEvents.emit('task:status-changed', { name, status: 'scheduled' })
+          sentinelEvents.emit('task:run-completed', { name, record: result.record })
+          sentinelEvents.emit('task:status-changed', { name, status: 'scheduled' })
           this.log('info', `Task ${name} completed successfully`)
           break
         } else {
-          wwcEvents.emit('task:run-completed', { name, record: result.record })
+          sentinelEvents.emit('task:run-completed', { name, record: result.record })
           this.log(
             'warn',
             `Task ${name} attempt ${attempt + 1}/${maxRetries + 1} failed: ${result.record.error}`,
           )
           if (attempt < maxRetries) {
             await this.store.setStatus(name, 'failed')
-            wwcEvents.emit('task:status-changed', { name, status: 'failed' })
+            sentinelEvents.emit('task:status-changed', { name, status: 'failed' })
             await new Promise((r) => setTimeout(r, retryDelay * 1000))
             await this.store.setStatus(name, 'running')
-            wwcEvents.emit('task:status-changed', { name, status: 'running' })
+            sentinelEvents.emit('task:status-changed', { name, status: 'running' })
           }
         }
       } catch (err) {
         this.log('error', `Task ${name} error: ${String(err)}`)
         const failStatus: TaskStatus = 'failed'
         await this.store.setStatus(name, failStatus)
-        wwcEvents.emit('task:status-changed', { name, status: failStatus })
+        sentinelEvents.emit('task:status-changed', { name, status: failStatus })
       }
     }
 
@@ -139,7 +139,7 @@ export class Scheduler {
     const finalInfo = await this.store.getTaskInfo(name)
     if (finalInfo.status === 'running') {
       await this.store.setStatus(name, 'failed')
-      wwcEvents.emit('task:status-changed', { name, status: 'failed' })
+      sentinelEvents.emit('task:status-changed', { name, status: 'failed' })
     }
 
     this.running.delete(name)

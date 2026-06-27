@@ -2,7 +2,7 @@ import { Command } from 'commander'
 import { promises as fs } from 'node:fs'
 import { join, resolve, isAbsolute } from 'node:path'
 
-const WWC_CONFIG = `# WWC Configuration
+const SENTINEL_CONFIG = `# WWC Configuration
 tasks_dir: tasks
 opencode_bin: opencode
 
@@ -41,7 +41,7 @@ execution:
 `
 
 export const initCommand = new Command('init')
-  .description('Initialize a new WWC project')
+  .description('Initialize a new Sentinel project')
   .argument('[dir]', 'Project directory', '.')
   .option('--tasks-dir <dir>', 'Tasks directory', 'tasks')
   .option('--opencode-bin <path>', 'Path to opencode binary', 'opencode')
@@ -51,15 +51,15 @@ export const initCommand = new Command('init')
     await fs.mkdir(root, { recursive: true })
     await fs.mkdir(join(root, options.tasksDir), { recursive: true })
 
-    const configContent = WWC_CONFIG
+    const configContent = SENTINEL_CONFIG
       .replace('tasks_dir: tasks', `tasks_dir: ${options.tasksDir}`)
       .replace('opencode_bin: opencode', `opencode_bin: ${options.opencodeBin}`)
 
-    await fs.writeFile(join(root, 'wwc.config.yaml'), configContent, 'utf-8')
+    await fs.writeFile(join(root, 'sentinel.config.yaml'), configContent, 'utf-8')
     await fs.writeFile(join(root, '.gitignore'), 'tasks/*/output/\n.history.json\n', 'utf-8')
 
-    console.log(`WWC project initialized at ${root}`)
+    console.log(`Sentinel project initialized at ${root}`)
     console.log(`  Tasks directory: ${join(root, options.tasksDir)}`)
-    console.log(`  Config file: ${join(root, 'wwc.config.yaml')}`)
-    console.log('\nNext step: wwc create <task-name>')
+    console.log(`  Config file: ${join(root, 'sentinel.config.yaml')}`)
+    console.log('\nNext step: sentinel create <task-name>')
   })

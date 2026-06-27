@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { TaskInfo } from '@wwc/core'
+import type { TaskInfo } from '@sentinel/core'
 import { ThemeProvider } from './hooks/useTheme'
 import MainLayout from './components/layout/MainLayout'
 import TaskList from './components/tasks/TaskList'

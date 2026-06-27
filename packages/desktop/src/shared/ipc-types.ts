@@ -1,4 +1,4 @@
-import type { TaskConfig, TaskInfo, TaskRunRecord, TaskStatus } from '@wwc/core'
+import type { TaskConfig, TaskInfo, TaskRunRecord, TaskStatus } from '@sentinel/core'
 
 // ─── IPC Channel Names (single source of truth) ────────────────────
 

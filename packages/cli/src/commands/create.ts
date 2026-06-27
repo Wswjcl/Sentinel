@@ -2,8 +2,8 @@ import { Command } from 'commander'
 import { promises as fs } from 'node:fs'
 import { join, resolve, isAbsolute } from 'node:path'
 import { stringify } from 'yaml'
-import { isValidCron, generateOpenCodeConfig, generateSkillContent } from '@wwc/core'
-import type { TaskConfig, ExternalDir } from '@wwc/core'
+import { isValidCron, generateOpenCodeConfig, generateSkillContent } from '@sentinel/core'
+import type { TaskConfig, ExternalDir } from '@sentinel/core'
 import { createInterface, type Interface } from 'node:readline'
 
 function ask(rl: Interface, prompt: string): Promise<string> {
@@ -246,7 +246,7 @@ async function createWorkspace(
   // Write AGENTS.md
   await fs.writeFile(
     join(taskDir, '.opencode', 'AGENTS.md'),
-    `# ${name}\n\n${desc}\n\nThis workspace is managed by WWC scheduler.\n`,
+    `# ${name}\n\n${desc}\n\nThis workspace is managed by Sentinel scheduler.\n`,
     'utf-8',
   )
 

@@ -1,8 +1,8 @@
 import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron'
 import { join, resolve } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { TaskStore, Scheduler, executeTask, isValidCron, generateOpenCodeConfig, generateSkillContent, wwcEvents } from '@wwc/core'
-import type { TaskConfig, ExternalDir, OpenCodeConfig } from '@wwc/core'
+import { TaskStore, Scheduler, executeTask, isValidCron, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
+import type { TaskConfig, ExternalDir, OpenCodeConfig } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
 import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo } from '../shared/ipc-types'
 
@@ -11,7 +11,7 @@ import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo } from '../shared/
 let mainWindow: BrowserWindow | null = null
 let scheduler: Scheduler | null = null
 
-const TASKS_DIR = resolve(app.getPath('home'), '.wwc', 'tasks')
+const TASKS_DIR = resolve(app.getPath('home'), '.sentinel', 'tasks')
 const store = new TaskStore({ tasksDir: TASKS_DIR })
 
 // ─── Window Creation ───────────────────────────────────────────────
@@ -50,25 +50,25 @@ function createWindow(): void {
 // ─── Forward core events to renderer ───────────────────────────────
 
 function setupEventForwarding(): void {
-  wwcEvents.on('task:status-changed', (data) => {
+  sentinelEvents.on('task:status-changed', (data) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC.EVENT_TASK_UPDATE, data)
     }
   })
 
-  wwcEvents.on('scheduler:log', (data) => {
+  sentinelEvents.on('scheduler:log', (data) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC.EVENT_SCHEDULER_LOG, { ...data, ts: Date.now() })
     }
   })
 
-  wwcEvents.on('scheduler:started', () => {
+  sentinelEvents.on('scheduler:started', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC.EVENT_SCHEDULER_STATUS, { running: true })
     }
   })
 
-  wwcEvents.on('scheduler:stopped', () => {
+  sentinelEvents.on('scheduler:stopped', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC.EVENT_SCHEDULER_STATUS, { running: false })
     }
@@ -155,7 +155,7 @@ function registerIpcHandlers(): void {
     // Write AGENTS.md
     await fs.writeFile(
       join(taskDir, '.opencode', 'AGENTS.md'),
-      `# ${finalConfig.name}\n\n${finalConfig.description}\n\nThis workspace is managed by WWC scheduler.\n`,
+      `# ${finalConfig.name}\n\n${finalConfig.description}\n\nThis workspace is managed by Sentinel scheduler.\n`,
       'utf-8',
     )
 
@@ -190,16 +190,16 @@ function registerIpcHandlers(): void {
         history.push(result.record)
         await store.saveHistory(name, history)
         await store.setStatus(name, result.record.status === 'success' ? 'scheduled' : 'failed')
-        wwcEvents.emit('task:status-changed', {
+        sentinelEvents.emit('task:status-changed', {
           name,
           status: result.record.status === 'success' ? 'scheduled' : 'failed',
         })
-        wwcEvents.emit('task:run-completed', { name, record: result.record })
+        sentinelEvents.emit('task:run-completed', { name, record: result.record })
       })
       .catch(async (err) => {
-        wwcEvents.emit('scheduler:log', { level: 'error', msg: `Task ${name} error: ${String(err)}` })
+        sentinelEvents.emit('scheduler:log', { level: 'error', msg: `Task ${name} error: ${String(err)}` })
         await store.setStatus(name, 'failed')
-        wwcEvents.emit('task:status-changed', { name, status: 'failed' })
+        sentinelEvents.emit('task:status-changed', { name, status: 'failed' })
       })
 
     return { ok: true, status: 'running' }
@@ -322,7 +322,7 @@ function registerIpcHandlers(): void {
     await store.init()
     scheduler = new Scheduler({ taskStore: store, concurrency: 3, checkIntervalMs: 60_000 })
     scheduler.setLogger((level, msg) => {
-      // Logs are forwarded via wwcEvents — no additional action needed
+      // Logs are forwarded via sentinelEvents — no additional action needed
     })
     scheduler.start()
     return { ok: true }
@@ -390,7 +390,7 @@ function setupMenu(): void {
     {
       label: 'Help',
       submenu: [
-        { label: 'Learn More', click: () => shell.openExternal('https://github.com/wwc-dev/wwc') },
+        { label: 'Learn More', click: () => shell.openExternal('https://github.com/Wswjcl/Sentinel') },
       ],
     },
   ]
@@ -400,7 +400,7 @@ function setupMenu(): void {
 // ─── App Lifecycle ─────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
-  electronApp.setAppUserModelId('com.wwc.desktop')
+  electronApp.setAppUserModelId('com.sentinel.desktop')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { TaskInfo, TaskStatus, TaskRunRecord } from '@wwc/core'
+import type { TaskInfo, TaskStatus, TaskRunRecord } from '@sentinel/core'
 import { ArrowLeft, Play, Trash2, RefreshCw, FolderOpen, FileText, Clock } from 'lucide-react'
 import type { TreeNode, OutputFile } from '../../../shared/ipc-types'
 

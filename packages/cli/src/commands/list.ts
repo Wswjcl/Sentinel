@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { TaskStore, getNextRun } from '@wwc/core'
+import { TaskStore, getNextRun } from '@sentinel/core'
 import chalk from 'chalk'
 
 export const listCommand = new Command('list')
@@ -11,7 +11,7 @@ export const listCommand = new Command('list')
     const names = await store.listTasks()
 
     if (names.length === 0) {
-      console.log('No tasks found. Create one with: wwc create <name>')
+      console.log('No tasks found. Create one with: sentinel create <name>')
       return
     }
 

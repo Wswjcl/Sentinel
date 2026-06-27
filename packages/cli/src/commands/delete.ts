@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { TaskStore } from '@wwc/core'
+import { TaskStore } from '@sentinel/core'
 import chalk from 'chalk'
 
 export const deleteCommand = new Command('delete')

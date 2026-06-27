@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, createContext, useContext, type React
 
 export type Theme = 'dark' | 'light'
 
-const STORAGE_KEY = 'wwc-theme'
+const STORAGE_KEY = 'sentinel-theme'
 
 function getInitialTheme(): Theme {
   try {

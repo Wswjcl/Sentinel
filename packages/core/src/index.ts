@@ -3,7 +3,7 @@ export { Scheduler } from './scheduler.js'
 export { executeTask } from './executor.js'
 export { getNextRun, shouldRunNow, isValidCron } from './cron.js'
 export { generateOpenCodeConfig, generateSkillContent, OPENCODE_CONFIG_TEMPLATE } from './opencode-config.js'
-export { wwcEvents } from './events.js'
+export { sentinelEvents } from './events.js'
 export type {
   TaskConfig,
   TaskSchedule,
@@ -19,4 +19,4 @@ export type {
   ExternalDir,
   GenerateOpenCodeOpts,
 } from './opencode-config.js'
-export type { WWCEventMap } from './events.js'
+export type { SentinelEventMap } from './events.js'

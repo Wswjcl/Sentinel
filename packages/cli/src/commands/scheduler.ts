@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { TaskStore, Scheduler } from '@wwc/core'
+import { TaskStore, Scheduler } from '@sentinel/core'
 import chalk from 'chalk'
 
 export const schedulerCommand = new Command('scheduler')
@@ -54,5 +54,5 @@ schedulerCommand
   .description('Show scheduler status')
   .action(async (options: any) => {
     console.log(chalk.yellow('Scheduler status: not running'))
-    console.log('Start with: wwc scheduler start')
+    console.log('Start with: sentinel scheduler start')
   })
