@@ -1,7 +1,13 @@
 {
   "name": "@sentinel/desktop",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
+  "description": "Sentinel - AI-powered task scheduler desktop client",
+  "author": "Wswjcl",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Wswjcl/Sentinel"
+  },
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
