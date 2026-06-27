@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage } from 'electron'
 import { join, resolve } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { TaskStore, Scheduler, executeTask, isValidCron, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
@@ -10,6 +10,8 @@ import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo } from '../shared/
 
 let mainWindow: BrowserWindow | null = null
 let scheduler: Scheduler | null = null
+let tray: Tray | null = null
+let isQuitting = false
 
 const TASKS_DIR = resolve(app.getPath('home'), '.sentinel', 'tasks')
 const store = new TaskStore({ tasksDir: TASKS_DIR })
@@ -37,6 +39,14 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+  })
+
+  // Minimize to tray on close instead of quitting
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault()
+      mainWindow?.hide()
+    }
   })
 
   // Load renderer
@@ -352,8 +362,127 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC.WINDOW_CLOSE, (e) => {
-    BrowserWindow.fromWebContents(e.sender)?.close()
+    // Hide to tray instead of closing
+    BrowserWindow.fromWebContents(e.sender)?.hide()
   })
+}
+
+// ─── System Tray ────────────────────────────────────────────────────
+
+function createTray(): void {
+  const icon = nativeImage.createFromBuffer(createDefaultIcon())
+  tray = new Tray(icon)
+  tray.setToolTip('Sentinel AI Scheduler')
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Show Window',
+      click: () => {
+        mainWindow?.show()
+        mainWindow?.focus()
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => {
+        isQuitting = true
+        app.quit()
+      },
+    },
+  ])
+
+  tray.setContextMenu(contextMenu)
+
+  // Double-click tray icon to show window
+  tray.on('double-click', () => {
+    mainWindow?.show()
+    mainWindow?.focus()
+  })
+}
+
+/**
+ * Generate a minimal 16x16 PNG icon buffer programmatically
+ * (a small blue circle on transparent background)
+ */
+function createDefaultIcon(): Buffer {
+  // Minimal valid 16x16 RGBA PNG
+  const size = 16
+  const { createCanvas } = (() => {
+    // Create raw RGBA data
+    const data = Buffer.alloc(size * size * 4, 0)
+    const cx = 7.5, cy = 7.5, r = 6
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const dx = x - cx, dy = y - cy
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        const i = (y * size + x) * 4
+        if (dist <= r) {
+          data[i] = 59     // R (blue-ish: #3B82F6)
+          data[i + 1] = 130  // G
+          data[i + 2] = 246  // B
+          data[i + 3] = 255  // A
+        }
+      }
+    }
+    return { createCanvas: () => data }
+  })()
+
+  // Encode as PNG manually (minimal valid PNG)
+  return encodePNG(createCanvas(), size)
+}
+
+function encodePNG(rgba: Buffer, width: number): Buffer {
+  const height = width
+  // PNG signature
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+
+  // IHDR chunk
+  const ihdrData = Buffer.alloc(13)
+  ihdrData.writeUInt32BE(width, 0)
+  ihdrData.writeUInt32BE(height, 4)
+  ihdrData[8] = 8  // bit depth
+  ihdrData[9] = 6  // color type: RGBA
+  ihdrData[10] = 0 // compression
+  ihdrData[11] = 0 // filter
+  ihdrData[12] = 0 // interlace
+  const ihdr = createChunk('IHDR', ihdrData)
+
+  // IDAT chunk (raw scanlines with filter byte 0 per row)
+  const { deflateSync } = require('node:zlib')
+  const rawData = Buffer.alloc(height * (1 + width * 4))
+  for (let y = 0; y < height; y++) {
+    rawData[y * (1 + width * 4)] = 0 // filter: None
+    rgba.copy(rawData, y * (1 + width * 4) + 1, y * width * 4, (y + 1) * width * 4)
+  }
+  const compressed = deflateSync(rawData)
+  const idat = createChunk('IDAT', compressed)
+
+  // IEND chunk
+  const iend = createChunk('IEND', Buffer.alloc(0))
+
+  return Buffer.concat([signature, ihdr, idat, iend])
+}
+
+function createChunk(type: string, data: Buffer): Buffer {
+  const length = Buffer.alloc(4)
+  length.writeUInt32BE(data.length, 0)
+  const typeBuffer = Buffer.from(type, 'ascii')
+  const crcInput = Buffer.concat([typeBuffer, data])
+  const crc = Buffer.alloc(4)
+  crc.writeUInt32BE(crc32(crcInput), 0)
+  return Buffer.concat([length, typeBuffer, data, crc])
+}
+
+function crc32(buf: Buffer): number {
+  let crc = 0xFFFFFFFF
+  for (let i = 0; i < buf.length; i++) {
+    crc ^= buf[i]
+    for (let j = 0; j < 8; j++) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0)
+    }
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0
 }
 
 // ─── Application Menu ──────────────────────────────────────────────
@@ -410,14 +539,21 @@ app.whenReady().then(async () => {
   setupMenu()
   registerIpcHandlers()
   setupEventForwarding()
+  createTray()
   createWindow()
 })
 
 app.on('window-all-closed', () => {
-  scheduler?.stop()
-  app.quit()
+  // Don't quit — tray keeps the app alive
 })
 
 app.on('before-quit', () => {
+  isQuitting = true
   scheduler?.stop()
+})
+
+app.on('activate', () => {
+  // macOS: click dock icon to show window
+  if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  else mainWindow?.show()
 })
