@@ -2,7 +2,7 @@ import { Command } from 'commander'
 import { promises as fs } from 'node:fs'
 import { join, resolve, isAbsolute } from 'node:path'
 import { stringify } from 'yaml'
-import { isValidCron, generateOpenCodeConfig, generateSkillContent } from '@sentinel/core'
+import { isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent } from '@sentinel/core'
 import type { TaskConfig, ExternalDir } from '@sentinel/core'
 import { createInterface, type Interface } from 'node:readline'
 
@@ -61,6 +61,7 @@ export const createCommand = new Command('create')
   .argument('<name>', 'Task name')
   .option('--project-dir <path>', 'Custom project directory path (default: tasks/<name>)')
   .option('--schedule <cron>', 'Cron schedule expression', '0 9 * * *')
+  .option('--schedule-type <type>', 'Schedule type: cron, interval, once', 'cron')
   .option('--prompt <text>', 'Task prompt')
   .option('--model <model>', 'Model to use')
   .option('--agent <agent>', 'Agent name', 'default')
@@ -74,6 +75,7 @@ export const createCommand = new Command('create')
   .action(async (name: string, options: {
     projectDir?: string
     schedule: string
+    scheduleType: string
     prompt?: string
     model?: string
     agent: string
@@ -136,7 +138,7 @@ export const createCommand = new Command('create')
 
       scheduleExpr = await ask(rl, `Cron schedule (default: ${options.schedule}): `) || options.schedule
 
-      if (!isValidCron(scheduleExpr)) {
+      if (!isValidSchedule('cron', scheduleExpr)) {
         console.error(`Invalid cron expression: ${scheduleExpr}`)
         rl.close()
         process.exit(1)
@@ -175,23 +177,24 @@ export const createCommand = new Command('create')
       if ((options as any)._interactiveDir) {
         // Use the interactive dir
         const finalDir = (options as any)._interactiveDir
-        await createWorkspace(finalDir, name, desc, scheduleExpr, tz, prompt, model, agent, allowTools, denyTools, skillNames, externalDirs)
+        await createWorkspace(finalDir, name, desc, options.scheduleType, scheduleExpr, tz, prompt, model, agent, allowTools, denyTools, skillNames, externalDirs)
         return
       }
     }
 
-    if (!isValidCron(scheduleExpr)) {
-      console.error(`Invalid cron expression: ${scheduleExpr}`)
+    if (!isValidSchedule(options.scheduleType, scheduleExpr)) {
+      console.error(`Invalid ${options.scheduleType} expression: ${scheduleExpr}`)
       process.exit(1)
     }
 
-    await createWorkspace(taskDir, name, desc, scheduleExpr, tz, prompt, model, agent, allowTools, denyTools, skillNames, externalDirs)
+    await createWorkspace(taskDir, name, desc, options.scheduleType, scheduleExpr, tz, prompt, model, agent, allowTools, denyTools, skillNames, externalDirs)
   })
 
 async function createWorkspace(
   taskDir: string,
   name: string,
   desc: string,
+  scheduleType: string,
   scheduleExpr: string,
   tz: string,
   prompt: string,
@@ -207,7 +210,7 @@ async function createWorkspace(
     description: desc || name,
     version: 1,
     schedule: {
-      type: 'cron',
+      type: (scheduleType as 'cron' | 'interval' | 'once') || 'cron',
       expr: scheduleExpr,
       timezone: tz,
     },

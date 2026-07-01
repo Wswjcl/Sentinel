@@ -30,6 +30,9 @@ export const IPC = {
   WINDOW_MAXIMIZE: 'window:maximize',
   WINDOW_CLOSE: 'window:close',
 
+  // App
+  APP_VERSION: 'app:version',
+
   // Real-time events (main → renderer)
   EVENT_TASK_UPDATE: 'event:task-update',
   EVENT_SCHEDULER_LOG: 'event:scheduler-log',
@@ -109,6 +112,9 @@ export interface ExposedAPI {
   minimizeWindow(): void
   maximizeWindow(): void
   closeWindow(): void
+
+  // App
+  getAppVersion(): Promise<string>
 
   // Real-time events (return cleanup function)
   onTaskUpdate(callback: (data: { name: string; status: TaskStatus }) => void): () => void

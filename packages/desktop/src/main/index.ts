@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage } from 'electron'
 import { join, resolve } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { TaskStore, Scheduler, executeTask, isValidCron, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
+import { TaskStore, Scheduler, executeTask, isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
 import type { TaskConfig, ExternalDir, OpenCodeConfig } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
 import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo } from '../shared/ipc-types'
@@ -104,8 +104,9 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.TASKS_CREATE, async (_e, opts: CreateTaskOpts) => {
     if (!opts.name) throw new Error('name is required')
-    if (opts.schedule?.expr && !isValidCron(opts.schedule.expr)) {
-      throw new Error('Invalid cron expression')
+    const scheduleType = opts.schedule?.type || 'cron'
+    if (opts.schedule?.expr && !isValidSchedule(scheduleType, opts.schedule.expr)) {
+      throw new Error(`Invalid ${scheduleType} expression: ${opts.schedule.expr}`)
     }
 
     const taskDir = opts.projectDir
@@ -364,6 +365,12 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.WINDOW_CLOSE, (e) => {
     // Hide to tray instead of closing
     BrowserWindow.fromWebContents(e.sender)?.hide()
+  })
+
+  // ── App ──
+
+  ipcMain.handle(IPC.APP_VERSION, () => {
+    return app.getVersion()
   })
 }
 

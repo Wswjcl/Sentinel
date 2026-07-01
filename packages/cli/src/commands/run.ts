@@ -39,6 +39,10 @@ export const runCommand = new Command('run')
     history.push(result.record)
     await store.saveHistory(name, history)
 
+    // Update task status
+    const newStatus = result.record.status === 'success' ? 'scheduled' : 'failed'
+    await store.setStatus(name, newStatus)
+
     if (result.record.status === 'success') {
       console.log(chalk.green(`\nTask "${name}" completed successfully`))
       if (result.stdout) {

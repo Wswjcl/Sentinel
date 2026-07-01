@@ -30,6 +30,9 @@ const api: ExposedAPI = {
   maximizeWindow: () => ipcRenderer.invoke(IPC.WINDOW_MAXIMIZE),
   closeWindow: () => ipcRenderer.invoke(IPC.WINDOW_CLOSE),
 
+  // ── App ──
+  getAppVersion: () => ipcRenderer.invoke(IPC.APP_VERSION),
+
   // ── Real-time events ──
   onTaskUpdate: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, data: { name: string; status: string }) => callback(data)

@@ -9,7 +9,7 @@ export default function SettingsPanel() {
   const [version, setVersion] = useState('')
 
   useEffect(() => {
-    setVersion('1.0.0')
+    window.api.getAppVersion().then(setVersion).catch(() => setVersion('unknown'))
   }, [])
 
   return (

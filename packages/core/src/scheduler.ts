@@ -1,6 +1,6 @@
 import { TaskStore } from './task-store.js'
 import { executeTask } from './executor.js'
-import { shouldRunNow } from './cron.js'
+import { shouldRunNow, shouldRunInterval } from './cron.js'
 import { sentinelEvents } from './events.js'
 import type { TaskInfo, TaskRunRecord, TaskStatus } from './types.js'
 
@@ -69,12 +69,26 @@ export class Scheduler {
         const info = await this.store.getTaskInfo(name)
         const schedule = info.config.schedule
 
-        if (schedule.type !== 'cron') continue
+        // Skip paused tasks
+        if (info.status === 'paused') continue
 
-        const lastRunDate = info.lastRun ? new Date(info.lastRun) : null
+        let shouldRun = false
 
-        if (shouldRunNow(schedule.expr, lastRunDate, schedule.timezone)) {
-          this.log('info', `Triggering task: ${name}`)
+        if (schedule.type === 'cron') {
+          const lastRunDate = info.lastRun ? new Date(info.lastRun) : null
+          shouldRun = shouldRunNow(schedule.expr, lastRunDate, schedule.timezone)
+        } else if (schedule.type === 'interval') {
+          const lastRunDate = info.lastRun ? new Date(info.lastRun) : null
+          shouldRun = shouldRunInterval(schedule.expr, lastRunDate)
+        } else if (schedule.type === 'once') {
+          // Run once if never run before, then auto-archive
+          if (!info.lastRun) {
+            shouldRun = true
+          }
+        }
+
+        if (shouldRun) {
+          this.log('info', `Triggering task: ${name} (${schedule.type})`)
           await this.runTask(name, info)
         }
       } catch (err) {
@@ -108,9 +122,11 @@ export class Scheduler {
         await this.store.saveHistory(name, history)
 
         if (result.record.status === 'success') {
-          await this.store.setStatus(name, 'scheduled')
+          // Auto-archive one-shot tasks after successful execution
+          const nextStatus = info.config.schedule.type === 'once' ? 'archived' : 'scheduled'
+          await this.store.setStatus(name, nextStatus)
           sentinelEvents.emit('task:run-completed', { name, record: result.record })
-          sentinelEvents.emit('task:status-changed', { name, status: 'scheduled' })
+          sentinelEvents.emit('task:status-changed', { name, status: nextStatus })
           this.log('info', `Task ${name} completed successfully`)
           break
         } else {

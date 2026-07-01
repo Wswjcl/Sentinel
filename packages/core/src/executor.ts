@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, execSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { TaskConfig, TaskRunRecord } from './types.js'
 
@@ -31,6 +31,11 @@ export async function executeTask(
 
   if (exec.model) args.push('--model', exec.model)
   if (exec.agent) args.push('--agent', exec.agent)
+  if (exec.skills && exec.skills.length > 0) {
+    for (const skill of exec.skills) {
+      args.push('--skill', skill)
+    }
+  }
 
   args.push(exec.prompt)
 
@@ -39,6 +44,22 @@ export async function executeTask(
     taskName: config.name,
     startedAt: new Date().toISOString(),
     status: 'running',
+  }
+
+  // Pre-flight: check if opencode is available
+  try {
+    const cmd = process.platform === 'win32' ? 'where' : 'which'
+    execSync(`${cmd} ${opencodeBin}`, { stdio: 'ignore', timeout: 5000 })
+  } catch {
+    record.finishedAt = new Date().toISOString()
+    record.exitCode = -1
+    record.status = 'failed'
+    record.error = `OpenCode CLI ("${opencodeBin}") not found. Please install it first: npm i -g opencode`
+    return {
+      record,
+      stdout: '',
+      stderr: record.error,
+    }
   }
 
   return new Promise((resolve) => {
