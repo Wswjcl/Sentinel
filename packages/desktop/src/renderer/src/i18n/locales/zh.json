@@ -43,6 +43,8 @@
     "running": "运行中...",
     "runNow": "立即运行",
     "deleteTask": "删除任务",
+    "pause": "暂停任务",
+    "resume": "恢复",
     "none": "无"
   },
   "detail": {
@@ -100,6 +102,12 @@
     "promptRequired": "提示词为必填项",
     "model": "模型 (可选)",
     "modelPlaceholder": "claude-sonnet-4-20250514",
+    "agent": "代理",
+    "skills": "技能",
+    "skillsPlaceholder": "news-collector, summarizer (逗号分隔)",
+    "permissions": "权限 (点击切换)",
+    "showAdvanced": "显示高级选项",
+    "hideAdvanced": "隐藏高级选项",
     "cancel": "取消",
     "creating": "创建中...",
     "createTask": "创建任务",

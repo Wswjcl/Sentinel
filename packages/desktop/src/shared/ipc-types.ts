@@ -9,6 +9,9 @@ export const IPC = {
   TASKS_CREATE: 'tasks:create',
   TASKS_DELETE: 'tasks:delete',
   TASKS_RUN: 'tasks:run',
+  TASKS_PAUSE: 'tasks:pause',
+  TASKS_RESUME: 'tasks:resume',
+  TASKS_UPDATE: 'tasks:update',
   TASKS_HISTORY: 'tasks:history',
   TASKS_WORKSPACE: 'tasks:workspace',
   TASKS_SKILLS: 'tasks:skills',
@@ -92,6 +95,9 @@ export interface ExposedAPI {
   createTask(opts: CreateTaskOpts): Promise<{ ok: boolean; name: string; dir: string }>
   deleteTask(name: string): Promise<{ ok: boolean }>
   runTask(name: string): Promise<{ ok: boolean; status: string }>
+  pauseTask(name: string): Promise<{ ok: boolean }>
+  resumeTask(name: string): Promise<{ ok: boolean }>
+  updateTask(name: string, opts: Partial<CreateTaskOpts>): Promise<{ ok: boolean }>
   getTaskHistory(name: string): Promise<TaskRunRecord[]>
   getTaskWorkspace(name: string): Promise<{ dir: string; tree: TreeNode[] }>
   getTaskSkills(name: string): Promise<SkillInfo[]>

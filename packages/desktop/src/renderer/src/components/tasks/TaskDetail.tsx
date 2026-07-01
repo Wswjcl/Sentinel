@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { TaskInfo, TaskStatus, TaskRunRecord } from '@sentinel/core'
-import { ArrowLeft, Play, Trash2, RefreshCw, FolderOpen, FileText, Clock } from 'lucide-react'
+import { ArrowLeft, Play, Pause, Trash2, RefreshCw, FolderOpen, FileText, Clock } from 'lucide-react'
 import { useI18n } from '../../hooks/useI18n'
 import type { TreeNode, OutputFile } from '../../../shared/ipc-types'
 
@@ -148,7 +148,7 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
           </button>
           <button
             onClick={handleRun}
-            disabled={running || task.status === 'running'}
+            disabled={running || task.status === 'running' || task.status === 'paused'}
             className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium
                        bg-[var(--color-green)] text-[var(--color-bg)] hover:opacity-90
                        disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
@@ -156,6 +156,31 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
             <Play className="w-3 h-3" />
             {running ? t('task.running') : t('task.runNow')}
           </button>
+          {task.status === 'paused' ? (
+            <button
+              onClick={async () => {
+                await window.api.resumeTask(name)
+                refreshTask()
+              }}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium
+                         bg-[var(--color-blue)] text-white hover:opacity-90 transition-opacity"
+              title={t('task.resume')}
+            >
+              <Play className="w-3 h-3" />
+              {t('task.resume')}
+            </button>
+          ) : task.status !== 'running' && task.status !== 'archived' ? (
+            <button
+              onClick={async () => {
+                await window.api.pauseTask(name)
+                refreshTask()
+              }}
+              className="p-1.5 rounded hover:bg-[var(--color-hover)] text-[var(--color-yellow)] transition-colors"
+              title={t('task.pause')}
+            >
+              <Pause className="w-4 h-4" />
+            </button>
+          ) : null}
           <button
             onClick={handleDelete}
             disabled={deleting}
@@ -416,6 +441,7 @@ function HistoryTab({ history }: { history: TaskRunRecord[] }) {
 
 function ConfigTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => void }) {
   const [config, setConfig] = useState<string>('')
+  const [taskConfigText, setTaskConfigText] = useState<string>('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
@@ -426,6 +452,10 @@ function ConfigTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => void 
       setConfig(JSON.stringify(c, null, 2))
     }).catch(console.error)
   }, [task.config.name])
+
+  useEffect(() => {
+    setTaskConfigText(JSON.stringify(task.config, null, 2))
+  }, [task.config])
 
   const handleSave = async () => {
     setSaving(true)
@@ -472,14 +502,47 @@ function ConfigTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => void 
         )}
       </div>
 
-      {/* Task YAML (read-only display) */}
+      {/* Task Config — editable */}
       <div>
-        <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">
-          {t('detail.taskConfig')}
-        </h3>
-        <pre className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-3 text-xs text-[var(--color-text-dim)] font-mono overflow-x-auto">
-          {JSON.stringify(task.config, null, 2)}
-        </pre>
+        <div className="flex items-center justify-between mb-1.5">
+          <h3 className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
+            {t('detail.taskConfig')}
+          </h3>
+          <button
+            onClick={async () => {
+              try {
+                const parsed = JSON.parse(taskConfigText)
+                await window.api.updateTask(task.config.name, {
+                  description: parsed.description,
+                  schedule: parsed.schedule,
+                  execution: {
+                    prompt: parsed.execution?.prompt,
+                    model: parsed.execution?.model,
+                    agent: parsed.execution?.agent,
+                    timeout: parsed.execution?.timeout,
+                    retry: parsed.execution?.retry,
+                    skills: parsed.execution?.skills,
+                  },
+                })
+                onRefresh()
+              } catch (err) {
+                setError(err instanceof Error ? err.message : String(err))
+              }
+            }}
+            className="px-3 py-1 rounded text-xs font-medium bg-[var(--color-green)] text-[var(--color-bg)]
+                       hover:opacity-90 transition-opacity"
+          >
+            {t('detail.save')}
+          </button>
+        </div>
+        <textarea
+          value={taskConfigText}
+          onChange={(e) => setTaskConfigText(e.target.value)}
+          spellCheck={false}
+          className="w-full h-60 bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-3
+                     text-xs text-[var(--color-text)] font-mono resize-y
+                     focus:outline-none focus:border-[var(--color-blue)] transition-colors"
+        />
       </div>
     </div>
   )

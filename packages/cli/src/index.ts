@@ -6,6 +6,8 @@ import { runCommand } from './commands/run.js'
 import { deleteCommand } from './commands/delete.js'
 import { schedulerCommand } from './commands/scheduler.js'
 import { initCommand } from './commands/init.js'
+import { pauseCommand } from './commands/pause.js'
+import { resumeCommand } from './commands/resume.js'
 
 const program = new Command()
 
@@ -20,6 +22,8 @@ program.addCommand(createCommand)
 program.addCommand(listCommand)
 program.addCommand(runCommand)
 program.addCommand(deleteCommand)
+program.addCommand(pauseCommand)
+program.addCommand(resumeCommand)
 program.addCommand(schedulerCommand)
 
 program.parse()

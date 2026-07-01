@@ -3,6 +3,12 @@ import { X } from 'lucide-react'
 import type { CreateTaskOpts } from '../../../shared/ipc-types'
 import { useI18n } from '../../hooks/useI18n'
 
+const AVAILABLE_AGENTS = ['build', 'plan', 'explore', 'general']
+const AVAILABLE_TOOLS = [
+  'bash', 'read', 'edit', 'glob', 'grep',
+  'webfetch', 'websearch', 'skill', 'todowrite', 'question',
+]
+
 interface CreateTaskDialogProps {
   onClose: () => void
   onCreated: () => void
@@ -15,7 +21,11 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
   const [scheduleExpr, setScheduleExpr] = useState('*/30 * * * *')
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState('')
+  const [agent, setAgent] = useState('build')
+  const [skills, setSkills] = useState('')
   const [projectDir, setProjectDir] = useState('')
+  const [allowTools, setAllowTools] = useState<string[]>(AVAILABLE_TOOLS)
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { t } = useI18n()
@@ -44,6 +54,7 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
 
     setSubmitting(true)
     try {
+      const skillList = skills.trim() ? skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined
       const opts: CreateTaskOpts = {
         name: name.trim(),
         description: description.trim() || undefined,
@@ -52,7 +63,11 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
         execution: {
           prompt: prompt.trim(),
           model: model.trim() || undefined,
+          agent: agent !== 'build' ? agent : undefined,
+          skills: skillList,
         },
+        skills: skillList,
+        allowTools: allowTools.length < AVAILABLE_TOOLS.length ? allowTools : undefined,
       }
       const result = await window.api.createTask(opts)
       if (result.ok) {
@@ -67,14 +82,20 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
     }
   }
 
+  const toggleTool = (tool: string) => {
+    setAllowTools((prev) =>
+      prev.includes(tool) ? prev.filter((t) => t !== tool) : [...prev, tool]
+    )
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
-        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl w-full max-w-lg mx-4 shadow-2xl"
+        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl w-full max-w-lg mx-4 shadow-2xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)] sticky top-0 bg-[var(--color-card)] z-10">
           <h2 className="text-base font-semibold text-[var(--color-text-bright)]">{t('create.title')}</h2>
           <button
             onClick={onClose}
@@ -143,10 +164,10 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
               <select
                 value={scheduleType}
                 onChange={(e) => {
-                  const t = e.target.value as 'cron' | 'interval' | 'once'
-                  setScheduleType(t)
-                  if (t === 'interval') setScheduleExpr('30m')
-                  else if (t === 'once') setScheduleExpr('now')
+                  const val = e.target.value as 'cron' | 'interval' | 'once'
+                  setScheduleType(val)
+                  if (val === 'interval') setScheduleExpr('30m')
+                  else if (val === 'once') setScheduleExpr('now')
                   else setScheduleExpr('*/30 * * * *')
                 }}
                 className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
@@ -190,21 +211,89 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
             />
           </div>
 
-          {/* Model */}
+          {/* Model + Agent row */}
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
+                {t('create.model')}
+              </label>
+              <input
+                type="text"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder={t('create.modelPlaceholder')}
+                className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
+                           px-3 py-1.5 text-sm text-[var(--color-text)] placeholder-[var(--color-text-dim)]
+                           focus:outline-none focus:border-[var(--color-blue)] transition-colors"
+              />
+            </div>
+            <div className="w-32">
+              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
+                {t('create.agent')}
+              </label>
+              <select
+                value={agent}
+                onChange={(e) => setAgent(e.target.value)}
+                className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
+                           px-3 py-1.5 text-sm text-[var(--color-text)]
+                           focus:outline-none focus:border-[var(--color-blue)] transition-colors"
+              >
+                {AVAILABLE_AGENTS.map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Skills */}
           <div>
             <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
-              {t('create.model')}
+              {t('create.skills')}
             </label>
             <input
               type="text"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder={t('create.modelPlaceholder')}
+              value={skills}
+              onChange={(e) => setSkills(e.target.value)}
+              placeholder={t('create.skillsPlaceholder')}
               className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
                          px-3 py-1.5 text-sm text-[var(--color-text)] placeholder-[var(--color-text-dim)]
                          focus:outline-none focus:border-[var(--color-blue)] transition-colors"
             />
           </div>
+
+          {/* Advanced toggle */}
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="text-xs text-[var(--color-blue)] hover:underline"
+          >
+            {showAdvanced ? t('create.hideAdvanced') : t('create.showAdvanced')}
+          </button>
+
+          {/* Advanced: Permissions */}
+          {showAdvanced && (
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-2">
+                {t('create.permissions')}
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {AVAILABLE_TOOLS.map((tool) => (
+                  <button
+                    key={tool}
+                    type="button"
+                    onClick={() => toggleTool(tool)}
+                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                      allowTools.includes(tool)
+                        ? 'bg-[var(--color-green)] text-[var(--color-bg)]'
+                        : 'bg-[var(--color-hover)] text-[var(--color-text-dim)] line-through'
+                    }`}
+                  >
+                    {tool}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Error */}
           {error && (

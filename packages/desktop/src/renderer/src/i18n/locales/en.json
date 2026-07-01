@@ -43,6 +43,8 @@
     "running": "Running...",
     "runNow": "Run Now",
     "deleteTask": "Delete task",
+    "pause": "Pause task",
+    "resume": "Resume",
     "none": "none"
   },
   "detail": {
@@ -100,6 +102,12 @@
     "promptRequired": "Prompt is required",
     "model": "Model (optional)",
     "modelPlaceholder": "claude-sonnet-4-20250514",
+    "agent": "Agent",
+    "skills": "Skills",
+    "skillsPlaceholder": "news-collector, summarizer (comma-separated)",
+    "permissions": "Permissions (click to toggle)",
+    "showAdvanced": "Show advanced options",
+    "hideAdvanced": "Hide advanced options",
     "cancel": "Cancel",
     "creating": "Creating...",
     "createTask": "Create Task",

@@ -191,6 +191,44 @@ function registerIpcHandlers(): void {
     return { ok: true }
   })
 
+  ipcMain.handle(IPC.TASKS_PAUSE, async (_e, name: string) => {
+    await store.setStatus(name, 'paused')
+    sentinelEvents.emit('task:status-changed', { name, status: 'paused' })
+    return { ok: true }
+  })
+
+  ipcMain.handle(IPC.TASKS_RESUME, async (_e, name: string) => {
+    await store.setStatus(name, 'scheduled')
+    sentinelEvents.emit('task:status-changed', { name, status: 'scheduled' })
+    return { ok: true }
+  })
+
+  ipcMain.handle(IPC.TASKS_UPDATE, async (_e, name: string, opts: Partial<CreateTaskOpts>) => {
+    const existing = await store.getConfig(name)
+    if (opts.description !== undefined) existing.description = opts.description
+    if (opts.schedule) {
+      if (opts.schedule.type) existing.schedule.type = opts.schedule.type as 'cron' | 'interval' | 'once'
+      if (opts.schedule.expr) existing.schedule.expr = opts.schedule.expr
+      if (opts.schedule.timezone) existing.schedule.timezone = opts.schedule.timezone
+    }
+    if (opts.execution) {
+      if (opts.execution.prompt !== undefined) existing.execution.prompt = opts.execution.prompt
+      if (opts.execution.model !== undefined) existing.execution.model = opts.execution.model || undefined
+      if (opts.execution.agent !== undefined) existing.execution.agent = opts.execution.agent
+      if (opts.execution.timeout !== undefined) existing.execution.timeout = opts.execution.timeout
+      if (opts.execution.retry !== undefined) {
+        existing.execution.retry = {
+          max: opts.execution.retry.max ?? existing.execution.retry?.max ?? 2,
+          delay: opts.execution.retry.delay ?? existing.execution.retry?.delay ?? 60,
+        }
+      }
+    }
+    if (opts.execution?.skills) existing.execution.skills = opts.execution.skills
+    await store.saveConfig(name, existing)
+    sentinelEvents.emit('task:status-changed', { name, status: 'scheduled' })
+    return { ok: true }
+  })
+
   ipcMain.handle(IPC.TASKS_RUN, async (_e, name: string) => {
     const info = await store.getTaskInfo(name)
 
