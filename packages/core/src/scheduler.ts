@@ -2,6 +2,7 @@ import { TaskStore } from './task-store.js'
 import { executeTask } from './executor.js'
 import { shouldRunNow, shouldRunInterval } from './cron.js'
 import { sentinelEvents } from './events.js'
+import { Notifier } from './notifier.js'
 import type { TaskInfo, TaskRunRecord, TaskStatus } from './types.js'
 
 export interface SchedulerOptions {
@@ -19,12 +20,16 @@ export class Scheduler {
   private timer: ReturnType<typeof setInterval> | null = null
   private running = new Set<string>()
   private onLog?: (level: string, msg: string) => void
+  private notifier: Notifier
 
   constructor(options: SchedulerOptions) {
     this.store = options.taskStore
     this.concurrency = options.concurrency ?? 3
     this.checkIntervalMs = options.checkIntervalMs ?? 60_000
     this.opencodeBin = options.opencodeBin ?? 'opencode'
+    this.notifier = new Notifier({
+      onLog: (level, msg) => this.log(level, msg),
+    })
   }
 
   setLogger(cb: (level: string, msg: string) => void): void {
@@ -128,6 +133,8 @@ export class Scheduler {
           sentinelEvents.emit('task:run-completed', { name, record: result.record })
           sentinelEvents.emit('task:status-changed', { name, status: nextStatus })
           this.log('info', `Task ${name} completed successfully`)
+          // Send webhook notification if configured
+          await this.notifier.notifyIfNeeded(config, result.record)
           break
         } else {
           sentinelEvents.emit('task:run-completed', { name, record: result.record })
@@ -156,6 +163,14 @@ export class Scheduler {
     if (finalInfo.status === 'running') {
       await this.store.setStatus(name, 'failed')
       sentinelEvents.emit('task:status-changed', { name, status: 'failed' })
+      // Notify on final failure
+      await this.notifier.notifyIfNeeded(config, {
+        id: '',
+        taskName: name,
+        startedAt: new Date().toISOString(),
+        status: 'failed',
+        error: 'All retry attempts exhausted',
+      })
     }
 
     this.running.delete(name)

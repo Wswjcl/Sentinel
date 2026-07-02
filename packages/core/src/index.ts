@@ -4,6 +4,9 @@ export { executeTask } from './executor.js'
 export { getNextRun, shouldRunNow, isValidCron, parseInterval, shouldRunInterval, isValidSchedule } from './cron.js'
 export { generateOpenCodeConfig, generateSkillContent, OPENCODE_CONFIG_TEMPLATE } from './opencode-config.js'
 export { sentinelEvents } from './events.js'
+export { Notifier } from './notifier.js'
+export { loadConfig } from './config.js'
+export type { SentinelAppConfig } from './config.js'
 export type {
   TaskConfig,
   TaskSchedule,

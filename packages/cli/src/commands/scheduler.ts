@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { TaskStore, Scheduler } from '@sentinel/core'
+import { TaskStore, Scheduler, loadConfig } from '@sentinel/core'
 import chalk from 'chalk'
 
 export const schedulerCommand = new Command('scheduler')
@@ -12,16 +12,19 @@ schedulerCommand
   .option('--interval <ms>', 'Check interval in ms (default: 60000 = 1min)', '60000')
   .action(async (options: any) => {
     const parent = schedulerCommand.optsWithGlobals()
-    const tasksDir = parent.tasksDir || 'tasks'
-    const interval = parseInt(options.interval, 10)
+    const appConfig = await loadConfig()
+    const tasksDir = parent.tasksDir || appConfig.tasks_dir || 'tasks'
+    const interval = parseInt(options.interval, 10) || appConfig.scheduler?.check_interval_ms || 60_000
+    const concurrency = appConfig.scheduler?.concurrency ?? 3
 
     const store = new TaskStore({ tasksDir })
     await store.init()
 
     const scheduler = new Scheduler({
       taskStore: store,
-      concurrency: 3,
+      concurrency,
       checkIntervalMs: interval,
+      opencodeBin: appConfig.opencode_bin,
     })
 
     scheduler.setLogger((level, msg) => {

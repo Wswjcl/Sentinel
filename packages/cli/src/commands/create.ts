@@ -2,7 +2,7 @@ import { Command } from 'commander'
 import { promises as fs } from 'node:fs'
 import { join, resolve, isAbsolute } from 'node:path'
 import { stringify } from 'yaml'
-import { isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent } from '@sentinel/core'
+import { isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, loadConfig, type SentinelAppConfig } from '@sentinel/core'
 import type { TaskConfig, ExternalDir } from '@sentinel/core'
 import { createInterface, type Interface } from 'node:readline'
 
@@ -87,7 +87,10 @@ export const createCommand = new Command('create')
     externalDir: string[]
     interactive: boolean
   }) => {
-    const tasksDir = options.tasksDir
+    // Load config file defaults
+    const appConfig = await loadConfig()
+    const configTasksDir = appConfig.tasks_dir || options.tasksDir
+    const tasksDir = configTasksDir
     const taskDir = options.projectDir
       ? (isAbsolute(options.projectDir) ? options.projectDir : resolve(options.projectDir))
       : join(tasksDir, name)
@@ -102,8 +105,8 @@ export const createCommand = new Command('create')
     let prompt = options.prompt || ''
     let desc = name
     let tz = options.timezone
-    let model = options.model || ''
-    let agent = options.agent || 'default'
+    let model = options.model || appConfig.defaults?.model || ''
+    let agent = options.agent || appConfig.defaults?.agent || 'default'
     let allowTools: string[] | undefined
     let denyTools: string[] | undefined
     let skillNames: string[] | undefined
@@ -187,7 +190,7 @@ export const createCommand = new Command('create')
       process.exit(1)
     }
 
-    await createWorkspace(taskDir, name, desc, options.scheduleType, scheduleExpr, tz, prompt, model, agent, allowTools, denyTools, skillNames, externalDirs)
+    await createWorkspace(taskDir, name, desc, options.scheduleType, scheduleExpr, tz, prompt, model, agent, allowTools, denyTools, skillNames, externalDirs, appConfig)
   })
 
 async function createWorkspace(
@@ -204,6 +207,7 @@ async function createWorkspace(
   denyTools: string[] | undefined,
   skillNames: string[] | undefined,
   externalDirs: ExternalDir[] | undefined,
+  appConfig: SentinelAppConfig = {},
 ) {
   const taskConfig: TaskConfig = {
     name,
@@ -218,8 +222,8 @@ async function createWorkspace(
       prompt: prompt || 'No prompt specified',
       model: model || undefined,
       agent: agent || 'default',
-      timeout: 600,
-      retry: { max: 2, delay: 60 },
+      timeout: appConfig.defaults?.timeout ?? 600,
+      retry: { max: appConfig.defaults?.retry?.max ?? 2, delay: appConfig.defaults?.retry?.delay ?? 60 },
     },
   }
 
