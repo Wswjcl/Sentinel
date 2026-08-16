@@ -1,10 +1,18 @@
-# Sentinel - AI Task Scheduler Design Document
+# Sentinel - Loop Engineering Platform Design Document
 
 ## 项目概述
 
-Sentinel 是一个基于 LLM 的定时任务调度系统。用户可以设置任务（每个任务是一个独立目录，包含 tools + project-level skills），系统在定时条件触发后，自动调用 OpenCode CLI 执行任务。
+Sentinel 是一个 **Loop Engineering Platform** —— 基于 AI Agent 的循环工程平台。核心理念来自 2026 年爆火的 Loop Engineering 概念：
+
+> **Stop prompting the agent. Design the loop that does it for you.**
+
+不再手动给 Agent 写 Prompt，而是设计一个系统，让 Agent 自主运行：**定时触发 → 执行 → 验证 → 修复迭代 → 经验沉淀 → 下次更聪明**。
+
+用户可以设置任务（每个任务是一个独立目录，包含 tools + project-level skills），系统在定时条件触发后，自动调用 OpenCode CLI 执行任务，并通过 Agent Loop 验证和修复输出。
 
 v1.0.0 重构为 **三包 monorepo**：`@sentinel/core`（引擎）、`@sentinel/cli`（命令行）、`@sentinel/desktop`（Electron 桌面应用），移除了旧版 Web Dashboard。
+
+v2.0.0 引入 **Loop Engineering**：Agent Loop 闭环、双模式验证、迭代修复。
 
 ### 核心理念
 
@@ -303,3 +311,193 @@ sentinel/
 | 构建工具 | electron-vite 3 | 三配置 (main/preload/renderer) |
 | 图标 | lucide-react | 轻量 SVG 图标库 |
 | 包管理 | npm workspaces | monorepo |
+
+## Loop Engineering（v2.0.0 新增）
+
+### 概念映射
+
+Loop Engineering 的六大构件与 Sentinel 的对应关系：
+
+| Loop Engineering 构件 | Sentinel 实现 | 状态 |
+|---|---|---|
+| **Skills**（Agent 能做什么） | `.opencode/skills/` 目录 | ✅ 已有 |
+| **State**（Agent 记住什么） | `.status.json` + `.history.json` | ✅ 已有 |
+| **Schedule**（何时触发） | Cron + Interval + Once 调度器 | ✅ 已有 |
+| **Budget**（Token/成本限制） | timeout + retry 上限 | ✅ 已有 |
+| **Verification**（如何验证结果） | `verification.ts` 双模式验证器 | ✅ v2.0 新增 |
+| **Agent Loop**（观察→验证→修复→迭代） | `agent-loop.ts` 闭环引擎 | ✅ v2.0 新增 |
+| **Memory**（跨循环学习） | 待实现（v2.1 计划） | 🔜 后续迭代 |
+
+### Agent Loop 闭环流程
+
+```
+触发 (Schedule)
+  │
+  ▼
+执行 OpenCode (iteration 0, 原始 prompt)
+  │
+  ▼
+验证 (Verification)
+  │
+  ├─ 通过 ──→ 记录结果 → 成功结束
+  │
+  └─ 失败 ──→ 根据 onFailure 策略:
+                ├─ stop    → 停止迭代，标记失败
+                ├─ notify  → 发送通知 + 继续迭代
+                └─ iterate → 构造修复 prompt → 再次执行 (iteration 1)
+                              │
+                              ▼
+                           执行 OpenCode (修复 prompt)
+                              │
+                              ▼
+                           验证 → ... (最多 maxIterations 轮)
+```
+
+### 双模式验证
+
+#### Command 模式（零 LLM 成本，速度快）
+
+在任务目录下执行 shell 命令，exit code 0 = 验证通过。
+
+```yaml
+agentLoop:
+  enabled: true
+  maxIterations: 3
+  verification:
+    type: command
+    command: "test -f output/result.md && grep -q '^##' output/result.md"
+    onFailure: iterate
+```
+
+适用场景：检查文件是否存在、运行测试、验证输出格式、检查关键字。
+
+#### LLM 模式（语义验证，更智能）
+
+调用 OpenCode 用 LLM 对输出进行语义验证。
+
+```yaml
+agentLoop:
+  enabled: true
+  maxIterations: 3
+  verification:
+    type: llm
+    criteria: |
+      - 摘要是否覆盖了主要新闻
+      - 每条新闻是否有标题和关键信息
+      - 格式是否为 Markdown
+    skill: verify-output    # 可选：指定验证 skill
+    onFailure: iterate
+```
+
+适用场景：内容质量检查、语义完整性验证、格式语义检查。
+
+### task.yaml 完整配置（Loop Engineering）
+
+```yaml
+name: daily-news-summary
+description: 每天早上9点整理AI/科技新闻摘要
+version: 2
+
+schedule:
+  type: cron
+  expr: "0 9 * * *"
+  timezone: Asia/Shanghai
+
+execution:
+  prompt: |
+    请浏览今天的 AI/科技领域重要新闻，整理一份中文摘要。
+  model: ""
+  agent: default
+  timeout: 600
+  retry:
+    max: 2
+    delay: 60
+  fixPromptTemplate: |
+    上一次执行的验证未通过。
+    验证反馈：{verification}
+    上次输出摘要：{output}
+    请根据反馈修复问题并重新生成。
+
+# Loop Engineering 配置
+agentLoop:
+  enabled: true
+  maxIterations: 3
+  verification:
+    type: command
+    command: "test -f output/result.md"
+    onFailure: iterate
+
+notify:
+  on_success: none
+  on_failure: webhook
+  webhook_url: ""
+```
+
+### 新增类型定义
+
+```typescript
+// Agent Loop 配置
+interface AgentLoopConfig {
+  enabled: boolean
+  maxIterations?: number       // 默认 3
+  verification: LoopVerification
+}
+
+// 验证配置
+interface LoopVerification {
+  type: 'command' | 'llm'
+  command?: string             // command 模式的验证命令
+  criteria?: string            // llm 模式的验证标准
+  skill?: string               // llm 模式的验证 skill
+  onFailure: 'iterate' | 'notify' | 'stop'
+}
+
+// 扩展 TaskExecution
+interface TaskExecution {
+  // ...existing fields...
+  fixPromptTemplate?: string   // 修复 prompt 模板
+}
+
+// 扩展 TaskConfig
+interface TaskConfig {
+  // ...existing fields...
+  agentLoop?: AgentLoopConfig
+}
+
+// 扩展 TaskRunRecord
+interface TaskRunRecord {
+  // ...existing fields...
+  iteration?: number           // 第几轮迭代
+  verificationPassed?: boolean // 验证是否通过
+  verificationOutput?: string  // 验证结果信息
+}
+```
+
+### 新增事件
+
+```typescript
+interface SentinelEventMap {
+  // ...existing events...
+  'loop:iteration-started': { name: string; iteration: number }
+  'loop:iteration-completed': { name: string; iteration: number; passed: boolean }
+  'loop:verification-failed': { name: string; iteration: number; verification: VerificationResult }
+  'loop:completed': { name: string; success: boolean; iterations: number }
+}
+```
+
+### 向后兼容
+
+- `agentLoop` 是可选字段，不配置时行为与 v1.x 完全一致
+- `fixPromptTemplate` 是可选字段，不配置时使用内置默认模板
+- `promptOverride` 是 executor 的可选参数，不传时使用原始 prompt
+- 新增事件不影响现有事件订阅
+- `TaskRunRecord` 新增字段都是可选的
+
+### 后续迭代计划
+
+| 版本 | 功能 | 说明 |
+|------|------|------|
+| v2.1 | Cross-Loop Memory | 跨循环记忆：每次执行的经验自动提取并注入下次 Prompt |
+| v2.2 | Loop Patterns | 内置 7 种标准 Loop Pattern（PR Babysitter、Daily Triage 等） |
+| v2.3 | Loop Audit | Loop Ready 评分系统，量化任务的 Loop 工程成熟度 |
+| v2.4 | Loop Cost | Token/成本追踪与预算控制 |

@@ -6,6 +6,8 @@ export { generateOpenCodeConfig, generateSkillContent, OPENCODE_CONFIG_TEMPLATE 
 export { sentinelEvents } from './events.js'
 export { Notifier } from './notifier.js'
 export { loadConfig } from './config.js'
+export { runAgentLoop } from './agent-loop.js'
+export { runVerification } from './verification.js'
 export type { SentinelAppConfig } from './config.js'
 export type {
   TaskConfig,
@@ -15,6 +17,8 @@ export type {
   TaskStatus,
   TaskRunRecord,
   TaskInfo,
+  AgentLoopConfig,
+  LoopVerification,
 } from './types.js'
 export type {
   OpenCodeConfig,
@@ -23,3 +27,5 @@ export type {
   GenerateOpenCodeOpts,
 } from './opencode-config.js'
 export type { SentinelEventMap } from './events.js'
+export type { AgentLoopOptions, AgentLoopResult } from './agent-loop.js'
+export type { VerificationOptions, VerificationResult } from './verification.js'

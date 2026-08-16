@@ -1,8 +1,12 @@
-# Sentinel — AI Task Scheduler
+# Sentinel — Loop Engineering Platform for AI Agents
 
-基于 OpenCode + LLM 的定时任务调度系统。每个任务 = 一个独立目录（含 tools + skills），定时触发后自动调用 OpenCode CLI 执行。
+基于 Loop Engineering 理念的 AI Agent 循环工程平台。不是手动给 Agent 写 Prompt，而是设计让 Agent 自主运行的系统：**定时触发 → 执行 → 验证 → 修复迭代 → 经验沉淀 → 下次更聪明**。
+
+每个任务 = 一个独立目录（含 tools + skills + verification），定时触发后自动调用 OpenCode CLI 执行，并通过 Agent Loop 验证和修复输出。
 
 v1.0.0 带来 **Electron 桌面应用**，替代了之前的 Web Dashboard，提供原生窗口体验、实时事件推送和直接的核心引擎调用。
+
+v2.0.0 引入 **Loop Engineering**：Agent Loop 闭环、双模式验证（command + LLM）、迭代修复。
 
 ## 快速开始
 

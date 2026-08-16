@@ -1,4 +1,4 @@
-import { spawn, execSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { TaskConfig, TaskRunRecord } from './types.js'
 
@@ -6,6 +6,9 @@ export interface ExecutorOptions {
   taskDir: string
   config: TaskConfig
   opencodeBin?: string
+  /** Override the execution prompt (used by Agent Loop for fix iterations).
+   *  When provided, this replaces config.execution.prompt in the CLI args. */
+  promptOverride?: string
 }
 
 export interface ExecutionResult {
@@ -17,9 +20,12 @@ export interface ExecutionResult {
 export async function executeTask(
   options: ExecutorOptions,
 ): Promise<ExecutionResult> {
-  const { taskDir, config, opencodeBin = 'opencode' } = options
+  const { taskDir, config, opencodeBin = 'opencode', promptOverride } = options
   const exec = config.execution
   const recordId = randomUUID()
+
+  // Use promptOverride if provided (Agent Loop fix iterations), otherwise original prompt
+  const effectivePrompt = promptOverride ?? exec.prompt
 
   // Build args array — no shell expansion to prevent command injection
   const args: string[] = [
@@ -37,7 +43,7 @@ export async function executeTask(
     }
   }
 
-  args.push(exec.prompt)
+  args.push(effectivePrompt)
 
   const record: TaskRunRecord = {
     id: recordId,
@@ -46,11 +52,15 @@ export async function executeTask(
     status: 'running',
   }
 
-  // Pre-flight: check if opencode is available
-  try {
-    const cmd = process.platform === 'win32' ? 'where' : 'which'
-    execSync(`${cmd} ${opencodeBin}`, { stdio: 'ignore', timeout: 5000 })
-  } catch {
+  // Pre-flight: check if opencode is available.
+  // Args-array form only - never interpolate the user-configured binary
+  // path into a shell command string (command injection).
+  const probe = spawnSync(
+    process.platform === 'win32' ? 'where' : 'which',
+    [opencodeBin],
+    { timeout: 5000 },
+  )
+  if (probe.error || probe.status !== 0) {
     record.finishedAt = new Date().toISOString()
     record.exitCode = -1
     record.status = 'failed'

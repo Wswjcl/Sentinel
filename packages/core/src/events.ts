@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import type { TaskStatus, TaskRunRecord } from './types.js'
+import type { VerificationResult } from './verification.js'
 
 export interface SentinelEventMap {
   'task:status-changed': { name: string; status: TaskStatus }
@@ -8,6 +9,11 @@ export interface SentinelEventMap {
   'scheduler:log': { level: string; msg: string }
   'scheduler:started': undefined
   'scheduler:stopped': undefined
+  // ── Loop Engineering events ──
+  'loop:iteration-started': { name: string; iteration: number }
+  'loop:iteration-completed': { name: string; iteration: number; passed: boolean }
+  'loop:verification-failed': { name: string; iteration: number; verification: VerificationResult }
+  'loop:completed': { name: string; success: boolean; iterations: number }
 }
 
 class SentinelEventEmitter extends EventEmitter {

@@ -1,7 +1,7 @@
-# Task Configuration
+# Task Configuration — with Loop Engineering (Agent Loop)
 name: daily-news-summary
 description: 每天早上9点整理AI/科技新闻摘要
-version: 1
+version: 2
 
 schedule:
   type: cron
@@ -26,6 +26,29 @@ execution:
   retry:
     max: 2
     delay: 60
+  fixPromptTemplate: |
+    上一次执行的验证未通过。
+
+    ## 验证反馈
+    {verification}
+
+    ## 上次输出摘要
+    {output}
+
+    请根据验证反馈修复问题并重新生成摘要。确保输出文件存在且包含有效内容。
+
+# ─── Loop Engineering: Agent Loop ────────────────────────────
+# When enabled, the scheduler runs: execute → verify → fix → iterate
+# This is the core of Loop Engineering — design the loop, not the prompt.
+agentLoop:
+  enabled: true
+  maxIterations: 3
+  verification:
+    # 'command' mode: run a shell command, exit code 0 = pass (zero LLM cost)
+    # 'llm' mode: use LLM to semantically verify output quality
+    type: command
+    command: "test -f output/daily-$(date +%Y-%m-%d).md && grep -q '^##' output/daily-$(date +%Y-%m-%d).md"
+    onFailure: iterate  # iterate | notify | stop
 
 notify:
   on_success: none
