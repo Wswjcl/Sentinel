@@ -2,7 +2,7 @@ import { Command } from 'commander'
 import { promises as fs } from 'node:fs'
 import { join, resolve, isAbsolute } from 'node:path'
 import { stringify } from 'yaml'
-import { isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, loadConfig, type SentinelAppConfig } from '@sentinel/core'
+import { isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, loadConfig, type SentinelAppConfig, type AgentLoopConfig } from '@sentinel/core'
 import type { TaskConfig, ExternalDir } from '@sentinel/core'
 import { createInterface, type Interface } from 'node:readline'
 
@@ -71,6 +71,13 @@ export const createCommand = new Command('create')
   .option('--deny-tools <tools>', 'Comma-separated tools to deny')
   .option('--skills <skills>', 'Comma-separated skill names to create')
   .option('--external-dir <path:perm:rw>', 'External directory access (repeatable)', (v: string, prev: string[]) => [...(prev || []), v], [] as string[])
+  .option('--loop', 'Enable Agent Loop (execute -> verify -> fix -> iterate)')
+  .option('--max-iterations <n>', 'Agent Loop max iterations', '3')
+  .option('--verify <type>', 'Verification type: command | llm', 'command')
+  .option('--verify-command <cmd>', 'Shell command for command verification (exit 0 = pass)')
+  .option('--verify-criteria <text>', 'Criteria text for LLM verification')
+  .option('--on-failure <policy>', 'On verification failure: iterate | notify | stop', 'iterate')
+  .option('--max-total-seconds <s>', 'Agent Loop wall-clock budget in seconds')
   .option('--interactive', 'Interactive mode', false)
   .action(async (name: string, options: {
     projectDir?: string
@@ -85,6 +92,13 @@ export const createCommand = new Command('create')
     denyTools?: string
     skills?: string
     externalDir: string[]
+    loop?: boolean
+    maxIterations: string
+    verify: string
+    verifyCommand?: string
+    verifyCriteria?: string
+    onFailure: string
+    maxTotalSeconds?: string
     interactive: boolean
   }) => {
     // Load config file defaults
@@ -123,6 +137,42 @@ export const createCommand = new Command('create')
     }
     if (options.externalDir && options.externalDir.length > 0) {
       externalDirs = options.externalDir.map(parseExternalDir).filter(Boolean) as ExternalDir[]
+    }
+
+    // Agent Loop configuration (--loop, or implied by --verify-command/--verify-criteria)
+    let agentLoop: AgentLoopConfig | undefined
+    if (options.loop || options.verifyCommand || options.verifyCriteria) {
+      const verifyType = options.verify as 'command' | 'llm'
+      if (verifyType !== 'command' && verifyType !== 'llm') {
+        console.error(`Invalid --verify type: ${options.verify} (use command or llm)`)
+        process.exit(1)
+      }
+      if (verifyType === 'command' && !options.verifyCommand) {
+        console.error('--verify-command is required when verification type is command')
+        process.exit(1)
+      }
+      if (verifyType === 'llm' && !options.verifyCriteria) {
+        console.error('--verify-criteria is required when verification type is llm')
+        process.exit(1)
+      }
+      if (!['iterate', 'notify', 'stop'].includes(options.onFailure)) {
+        console.error(`Invalid --on-failure policy: ${options.onFailure} (use iterate, notify or stop)`)
+        process.exit(1)
+      }
+      agentLoop = {
+        enabled: true,
+        maxIterations: parseInt(options.maxIterations, 10) || 3,
+        verification: {
+          type: verifyType,
+          command: options.verifyCommand,
+          criteria: options.verifyCriteria,
+          onFailure: options.onFailure as AgentLoopConfig['verification']['onFailure'],
+        },
+      }
+      const budget = options.maxTotalSeconds ? parseInt(options.maxTotalSeconds, 10) : NaN
+      if (!Number.isNaN(budget) && budget > 0) {
+        agentLoop.maxTotalSeconds = budget
+      }
     }
 
     if (options.interactive) {
@@ -180,7 +230,7 @@ export const createCommand = new Command('create')
       if ((options as any)._interactiveDir) {
         // Use the interactive dir
         const finalDir = (options as any)._interactiveDir
-        await createWorkspace(finalDir, name, desc, options.scheduleType, scheduleExpr, tz, prompt, model, agent, allowTools, denyTools, skillNames, externalDirs)
+        await createWorkspace(finalDir, name, desc, options.scheduleType, scheduleExpr, tz, prompt, model, agent, allowTools, denyTools, skillNames, externalDirs, agentLoop)
         return
       }
     }
@@ -190,7 +240,7 @@ export const createCommand = new Command('create')
       process.exit(1)
     }
 
-    await createWorkspace(taskDir, name, desc, options.scheduleType, scheduleExpr, tz, prompt, model, agent, allowTools, denyTools, skillNames, externalDirs, appConfig)
+    await createWorkspace(taskDir, name, desc, options.scheduleType, scheduleExpr, tz, prompt, model, agent, allowTools, denyTools, skillNames, externalDirs, agentLoop, appConfig)
   })
 
 async function createWorkspace(
@@ -207,6 +257,7 @@ async function createWorkspace(
   denyTools: string[] | undefined,
   skillNames: string[] | undefined,
   externalDirs: ExternalDir[] | undefined,
+  agentLoop?: AgentLoopConfig,
   appConfig: SentinelAppConfig = {},
 ) {
   const taskConfig: TaskConfig = {
@@ -226,6 +277,7 @@ async function createWorkspace(
       retry: { max: appConfig.defaults?.retry?.max ?? 2, delay: appConfig.defaults?.retry?.delay ?? 60 },
     },
   }
+  if (agentLoop) taskConfig.agentLoop = agentLoop
 
   const opencodeConfig = generateOpenCodeConfig(taskConfig, {
     permissions: allowTools,
@@ -284,4 +336,7 @@ async function createWorkspace(
   }
   if (allowTools) console.log(`  Allowed tools:  ${allowTools.join(', ')}`)
   if (denyTools) console.log(`  Denied tools:   ${denyTools.join(', ')}`)
+  if (agentLoop) {
+    console.log(`  Agent Loop:     on (max ${agentLoop.maxIterations ?? 3} iterations, ${agentLoop.verification.type} verification, onFailure=${agentLoop.verification.onFailure})`)
+  }
 }

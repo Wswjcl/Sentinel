@@ -16,6 +16,13 @@ export interface AgentLoopOptions {
    *  records incrementally so a crash mid-loop doesn't lose completed
    *  iterations. */
   onIterationComplete?: (record: TaskRunRecord) => void | Promise<void>
+  /** Called for each failed iteration when onFailure is 'notify'.
+   *  Wire this to the Notifier to actually dispatch intermediate
+   *  failure webhooks. */
+  onNotifyIterationFailed?: (
+    iteration: number,
+    verification: VerificationResult,
+  ) => void | Promise<void>
 }
 
 // ─── Agent Loop Result ──────────────────────────────────────
@@ -34,6 +41,9 @@ export interface AgentLoopResult {
 // ─── Default Fix Prompt Template ────────────────────────────
 
 const DEFAULT_FIX_PROMPT_TEMPLATE = `上一次执行的验证未通过。
+
+## 原始任务
+{originalPrompt}
 
 ## 验证反馈
 {verification}
@@ -58,9 +68,22 @@ const DEFAULT_FIX_PROMPT_TEMPLATE = `上一次执行的验证未通过。
 export async function runAgentLoop(
   options: AgentLoopOptions,
 ): Promise<AgentLoopResult> {
-  const { taskDir, config, opencodeBin = 'opencode', onLog, onIterationComplete } = options
-  const loopConfig = config.agentLoop!
+  const {
+    taskDir,
+    config,
+    opencodeBin = 'opencode',
+    onLog,
+    onIterationComplete,
+    onNotifyIterationFailed,
+  } = options
+  const loopConfig = config.agentLoop
+  if (!loopConfig) {
+    throw new Error('runAgentLoop: config.agentLoop is required (set agentLoop.enabled: true)')
+  }
   const maxIterations = loopConfig.maxIterations ?? 3
+  const maxTotalMs =
+    loopConfig.maxTotalSeconds != null ? loopConfig.maxTotalSeconds * 1000 : null
+  const loopStartedAt = Date.now()
 
   let currentPrompt = config.execution.prompt
   let lastOutput = ''
@@ -69,6 +92,13 @@ export async function runAgentLoop(
   onLog?.('info', `Agent Loop started (max ${maxIterations} iterations)`)
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
+    // ── 0. Budget guard: stop starting new iterations once the
+    // wall-clock budget is exhausted (cost control) ──
+    if (maxTotalMs !== null && Date.now() - loopStartedAt > maxTotalMs) {
+      onLog?.('warn', `Agent Loop wall-clock budget of ${loopConfig.maxTotalSeconds}s exceeded, stopping`)
+      break
+    }
+
     // ── 1. Emit iteration-started event ──
     sentinelEvents.emit('loop:iteration-started', {
       name: config.name,
@@ -156,13 +186,17 @@ export async function runAgentLoop(
       break
     }
 
-    // 'notify' continues iterating but emits the event for external consumers
-    // (the event was already emitted above)
+    // 'notify' keeps iterating but dispatches an intermediate failure
+    // webhook for each failed iteration (wired by the caller).
+    if (loopConfig.verification.onFailure === 'notify') {
+      await onNotifyIterationFailed?.(iteration, verification)
+    }
 
     // ── 8. Build fix prompt for next iteration ──
     if (iteration < maxIterations - 1) {
       const fixTemplate = config.execution.fixPromptTemplate ?? DEFAULT_FIX_PROMPT_TEMPLATE
       currentPrompt = fixTemplate
+        .replace(/\{originalPrompt\}/g, config.execution.prompt)
         .replace(/\{verification\}/g, verification.message)
         .replace(/\{output\}/g, lastOutput.slice(-2000))
     }

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { TaskStatus } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
-import type { ExposedAPI } from '../shared/ipc-types'
+import type { ExposedAPI, LoopEventData } from '../shared/ipc-types'
 
 const api: ExposedAPI = {
   // ── Tasks ──
@@ -38,7 +39,7 @@ const api: ExposedAPI = {
 
   // ── Real-time events ──
   onTaskUpdate: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: { name: string; status: string }) => callback(data)
+    const handler = (_event: Electron.IpcRendererEvent, data: { name: string; status: TaskStatus }) => callback(data)
     ipcRenderer.on(IPC.EVENT_TASK_UPDATE, handler)
     return () => ipcRenderer.removeListener(IPC.EVENT_TASK_UPDATE, handler)
   },
@@ -53,6 +54,12 @@ const api: ExposedAPI = {
     const handler = (_event: Electron.IpcRendererEvent, data: { running: boolean }) => callback(data)
     ipcRenderer.on(IPC.EVENT_SCHEDULER_STATUS, handler)
     return () => ipcRenderer.removeListener(IPC.EVENT_SCHEDULER_STATUS, handler)
+  },
+
+  onLoopUpdate: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: LoopEventData) => callback(data)
+    ipcRenderer.on(IPC.EVENT_LOOP_UPDATE, handler)
+    return () => ipcRenderer.removeListener(IPC.EVENT_LOOP_UPDATE, handler)
   },
 }
 

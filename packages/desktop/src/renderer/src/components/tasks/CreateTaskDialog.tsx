@@ -26,6 +26,12 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
   const [projectDir, setProjectDir] = useState('')
   const [allowTools, setAllowTools] = useState<string[]>(AVAILABLE_TOOLS)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [loopEnabled, setLoopEnabled] = useState(false)
+  const [verifyType, setVerifyType] = useState<'command' | 'llm'>('command')
+  const [verifyCommand, setVerifyCommand] = useState('')
+  const [verifyCriteria, setVerifyCriteria] = useState('')
+  const [maxIterations, setMaxIterations] = useState('3')
+  const [onFailure, setOnFailure] = useState<'iterate' | 'notify' | 'stop'>('iterate')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { t } = useI18n()
@@ -51,6 +57,16 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
       setError(t('create.projectDirRequired'))
       return
     }
+    if (loopEnabled) {
+      if (verifyType === 'command' && !verifyCommand.trim()) {
+        setError(t('create.verifyCommandRequired'))
+        return
+      }
+      if (verifyType === 'llm' && !verifyCriteria.trim()) {
+        setError(t('create.verifyCriteriaRequired'))
+        return
+      }
+    }
 
     setSubmitting(true)
     try {
@@ -68,6 +84,18 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
         },
         skills: skillList,
         allowTools: allowTools.length < AVAILABLE_TOOLS.length ? allowTools : undefined,
+        agentLoop: loopEnabled
+          ? {
+              enabled: true,
+              maxIterations: parseInt(maxIterations, 10) || 3,
+              verification: {
+                type: verifyType,
+                command: verifyType === 'command' ? verifyCommand.trim() : undefined,
+                criteria: verifyType === 'llm' ? verifyCriteria.trim() : undefined,
+                onFailure,
+              },
+            }
+          : undefined,
       }
       const result = await window.api.createTask(opts)
       if (result.ok) {
@@ -292,6 +320,106 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Advanced: Agent Loop (Loop Engineering) */}
+          {showAdvanced && (
+            <div className="border-t border-[var(--color-border)] pt-3">
+              <label className="flex items-center gap-2 text-xs font-medium text-[var(--color-text-muted)] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={loopEnabled}
+                  onChange={(e) => setLoopEnabled(e.target.checked)}
+                  className="accent-[var(--color-blue)]"
+                />
+                {t('create.loopEnable')} — {t('create.agentLoop')}
+              </label>
+
+              {loopEnabled && (
+                <div className="space-y-3 mt-3">
+                  <div className="flex gap-3">
+                    <div className="w-36">
+                      <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
+                        {t('create.verifyType')}
+                      </label>
+                      <select
+                        value={verifyType}
+                        onChange={(e) => setVerifyType(e.target.value as 'command' | 'llm')}
+                        className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
+                                   px-3 py-1.5 text-sm text-[var(--color-text)]
+                                   focus:outline-none focus:border-[var(--color-blue)] transition-colors"
+                      >
+                        <option value="command">command</option>
+                        <option value="llm">llm</option>
+                      </select>
+                    </div>
+                    <div className="w-24">
+                      <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
+                        {t('create.maxIterations')}
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={maxIterations}
+                        onChange={(e) => setMaxIterations(e.target.value)}
+                        className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
+                                   px-3 py-1.5 text-sm text-[var(--color-text)]
+                                   focus:outline-none focus:border-[var(--color-blue)] transition-colors"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
+                        {t('create.onFailure')}
+                      </label>
+                      <select
+                        value={onFailure}
+                        onChange={(e) => setOnFailure(e.target.value as 'iterate' | 'notify' | 'stop')}
+                        className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
+                                   px-3 py-1.5 text-sm text-[var(--color-text)]
+                                   focus:outline-none focus:border-[var(--color-blue)] transition-colors"
+                      >
+                        <option value="iterate">{t('create.onFailureIterate')}</option>
+                        <option value="notify">{t('create.onFailureNotify')}</option>
+                        <option value="stop">{t('create.onFailureStop')}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {verifyType === 'command' ? (
+                    <div>
+                      <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
+                        {t('create.verifyCommand')} <span className="text-[var(--color-red)]">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={verifyCommand}
+                        onChange={(e) => setVerifyCommand(e.target.value)}
+                        placeholder={t('create.verifyCommandPlaceholder')}
+                        className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
+                                   px-3 py-1.5 text-sm text-[var(--color-text)] placeholder-[var(--color-text-dim)] font-mono
+                                   focus:outline-none focus:border-[var(--color-blue)] transition-colors"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
+                        {t('create.verifyCriteria')} <span className="text-[var(--color-red)]">*</span>
+                      </label>
+                      <textarea
+                        value={verifyCriteria}
+                        onChange={(e) => setVerifyCriteria(e.target.value)}
+                        placeholder={t('create.verifyCriteriaPlaceholder')}
+                        rows={3}
+                        className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
+                                   px-3 py-2 text-sm text-[var(--color-text)] placeholder-[var(--color-text-dim)] resize-y
+                                   focus:outline-none focus:border-[var(--color-blue)] transition-colors"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

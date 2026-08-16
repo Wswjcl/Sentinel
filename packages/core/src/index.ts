@@ -8,6 +8,7 @@ export { Notifier } from './notifier.js'
 export { loadConfig } from './config.js'
 export { runAgentLoop } from './agent-loop.js'
 export { runVerification } from './verification.js'
+export { runTaskExecution } from './runner.js'
 export type { SentinelAppConfig } from './config.js'
 export type {
   TaskConfig,
@@ -29,3 +30,4 @@ export type {
 export type { SentinelEventMap } from './events.js'
 export type { AgentLoopOptions, AgentLoopResult } from './agent-loop.js'
 export type { VerificationOptions, VerificationResult } from './verification.js'
+export type { TaskRunnerOptions, TaskRunOutcome } from './runner.js'

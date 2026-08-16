@@ -15,7 +15,8 @@ export interface TaskExecution {
     delay: number
   }
   /** Prompt template for fix iterations in Agent Loop.
-   *  Placeholders: {verification} = verification feedback, {output} = last output snippet */
+   *  Placeholders: {originalPrompt} = the original task prompt,
+   *  {verification} = verification feedback, {output} = last output snippet */
   fixPromptTemplate?: string
 }
 
@@ -43,6 +44,9 @@ export interface AgentLoopConfig {
   enabled: boolean
   /** Maximum iteration rounds (default 3). First execution = iteration 0. */
   maxIterations?: number
+  /** Wall-clock budget for the whole loop in seconds. When exceeded, no
+   *  further iterations start and the loop ends as failed. */
+  maxTotalSeconds?: number
   verification: LoopVerification
 }
 

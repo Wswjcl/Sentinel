@@ -1,11 +1,8 @@
-import { randomUUID } from 'node:crypto'
 import { TaskStore } from './task-store.js'
-import { executeTask } from './executor.js'
-import { runAgentLoop } from './agent-loop.js'
+import { runTaskExecution } from './runner.js'
 import { shouldRunNow, shouldRunInterval } from './cron.js'
 import { sentinelEvents } from './events.js'
-import { Notifier } from './notifier.js'
-import type { TaskInfo, TaskRunRecord, TaskStatus } from './types.js'
+import type { TaskInfo } from './types.js'
 
 export interface SchedulerOptions {
   taskStore: TaskStore
@@ -22,16 +19,12 @@ export class Scheduler {
   private timer: ReturnType<typeof setInterval> | null = null
   private running = new Set<string>()
   private onLog?: (level: string, msg: string) => void
-  private notifier: Notifier
 
   constructor(options: SchedulerOptions) {
     this.store = options.taskStore
     this.concurrency = options.concurrency ?? 3
     this.checkIntervalMs = options.checkIntervalMs ?? 60_000
     this.opencodeBin = options.opencodeBin ?? 'opencode'
-    this.notifier = new Notifier({
-      onLog: (level, msg) => this.log(level, msg),
-    })
   }
 
   setLogger(cb: (level: string, msg: string) => void): void {
@@ -105,157 +98,25 @@ export class Scheduler {
   }
 
   private async runTask(name: string, info: TaskInfo): Promise<void> {
-    const { config } = info
-    const maxRetries = config.execution.retry?.max ?? 0
-    const retryDelay = config.execution.retry?.delay ?? 60
-
     this.running.add(name)
 
     // Mark status as running
     await this.store.setStatus(name, 'running')
     sentinelEvents.emit('task:status-changed', { name, status: 'running' })
 
-    // ── Agent Loop path (Loop Engineering) ──
-    if (config.agentLoop?.enabled) {
-      try {
-        const loopResult = await runAgentLoop({
-          taskDir: info.dir,
-          config,
-          opencodeBin: this.opencodeBin,
-          onLog: (level, msg) => this.log(level, msg),
-          // Persist each iteration as soon as it completes so a crash or
-          // throw mid-loop doesn't lose records already paid for.
-          onIterationComplete: async (record) => {
-            const history = await this.store.getHistory(name)
-            history.push(record)
-            await this.store.saveHistory(name, history)
-          },
-        })
-
-        if (loopResult.success) {
-          const nextStatus = info.config.schedule.type === 'once' ? 'archived' : 'scheduled'
-          await this.store.setStatus(name, nextStatus)
-          sentinelEvents.emit('task:status-changed', { name, status: nextStatus })
-          this.log('info', `Task ${name} loop completed successfully (${loopResult.iterations} iteration(s))`)
-          // Notify with the last record
-          const lastRecord = loopResult.records[loopResult.records.length - 1]
-          if (lastRecord) {
-            sentinelEvents.emit('task:run-completed', { name, record: lastRecord })
-            await this.notifier.notifyIfNeeded(config, lastRecord)
-          }
-        } else {
-          await this.store.setStatus(name, 'failed')
-          sentinelEvents.emit('task:status-changed', { name, status: 'failed' })
-          this.log('warn', `Task ${name} loop exhausted ${loopResult.iterations} iteration(s) without convergence`)
-          const lastRecord = loopResult.records[loopResult.records.length - 1]
-          if (lastRecord) {
-            sentinelEvents.emit('task:run-completed', { name, record: lastRecord })
-            await this.notifier.notifyIfNeeded(config, lastRecord)
-          }
-        }
-      } catch (err) {
-        this.log('error', `Task ${name} agent loop error: ${String(err)}`)
-        // Leave a trace in history - a silent failed status with no record
-        // makes mid-loop crashes undebuggable. (Records of iterations that
-        // completed before the throw were already persisted by the
-        // onIterationComplete callback.)
-        try {
-          const failRecord: TaskRunRecord = {
-            id: randomUUID(),
-            taskName: name,
-            startedAt: new Date().toISOString(),
-            finishedAt: new Date().toISOString(),
-            status: 'failed',
-            error: `Agent loop error: ${String(err)}`,
-          }
-          const history = await this.store.getHistory(name)
-          history.push(failRecord)
-          await this.store.saveHistory(name, history)
-        } catch {}
-        await this.store.setStatus(name, 'failed')
-        sentinelEvents.emit('task:status-changed', { name, status: 'failed' })
-      }
-
-      this.running.delete(name)
-      return
-    }
-
-    // ── Standard execution path (no Agent Loop) ──
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const result = await executeTask({
-          taskDir: info.dir,
-          config,
-          opencodeBin: this.opencodeBin,
-        })
-
-        // Record EVERY attempt in history (not just the last one)
-        const history = await this.store.getHistory(name)
-        history.push(result.record)
-        await this.store.saveHistory(name, history)
-
-        if (result.record.status === 'success') {
-          // Auto-archive one-shot tasks after successful execution
-          const nextStatus = info.config.schedule.type === 'once' ? 'archived' : 'scheduled'
-          await this.store.setStatus(name, nextStatus)
-          sentinelEvents.emit('task:run-completed', { name, record: result.record })
-          sentinelEvents.emit('task:status-changed', { name, status: nextStatus })
-          this.log('info', `Task ${name} completed successfully`)
-          // Send webhook notification if configured
-          await this.notifier.notifyIfNeeded(config, result.record)
-          break
-        } else {
-          sentinelEvents.emit('task:run-completed', { name, record: result.record })
-          this.log(
-            'warn',
-            `Task ${name} attempt ${attempt + 1}/${maxRetries + 1} failed: ${result.record.error}`,
-          )
-          if (attempt < maxRetries) {
-            await this.store.setStatus(name, 'failed')
-            sentinelEvents.emit('task:status-changed', { name, status: 'failed' })
-            await new Promise((r) => setTimeout(r, retryDelay * 1000))
-            await this.store.setStatus(name, 'running')
-            sentinelEvents.emit('task:status-changed', { name, status: 'running' })
-          }
-        }
-      } catch (err) {
-        this.log('error', `Task ${name} error: ${String(err)}`)
-        // Record the error in history - an exception thrown by executeTask
-        // itself would otherwise leave no trace of the failed attempt.
-        try {
-          const failRecord: TaskRunRecord = {
-            id: randomUUID(),
-            taskName: name,
-            startedAt: new Date().toISOString(),
-            finishedAt: new Date().toISOString(),
-            status: 'failed',
-            error: String(err),
-          }
-          const history = await this.store.getHistory(name)
-          history.push(failRecord)
-          await this.store.saveHistory(name, history)
-        } catch {}
-        const failStatus: TaskStatus = 'failed'
-        await this.store.setStatus(name, failStatus)
-        sentinelEvents.emit('task:status-changed', { name, status: failStatus })
-      }
-    }
-
-    // Final status if all retries exhausted and still not success
-    const finalInfo = await this.store.getTaskInfo(name)
-    if (finalInfo.status === 'running') {
-      await this.store.setStatus(name, 'failed')
-      sentinelEvents.emit('task:status-changed', { name, status: 'failed' })
-      // Notify on final failure
-      await this.notifier.notifyIfNeeded(config, {
-        id: '',
-        taskName: name,
-        startedAt: new Date().toISOString(),
-        status: 'failed',
-        error: 'All retry attempts exhausted',
+    // Execution, per-iteration history persistence, status transitions
+    // and webhook notifications all happen in the shared runner, so
+    // scheduled runs, manual runs and `sentinel run` behave identically.
+    try {
+      await runTaskExecution({
+        taskStore: this.store,
+        name,
+        info,
+        opencodeBin: this.opencodeBin,
+        onLog: (level, msg) => this.log(level, msg),
       })
+    } finally {
+      this.running.delete(name)
     }
-
-    this.running.delete(name)
   }
 }

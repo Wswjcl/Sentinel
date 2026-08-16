@@ -1,4 +1,4 @@
-import type { TaskConfig, TaskInfo, TaskRunRecord, TaskStatus } from '@sentinel/core'
+import type { TaskConfig, TaskInfo, TaskRunRecord, TaskStatus, AgentLoopConfig } from '@sentinel/core'
 
 // ─── IPC Channel Names (single source of truth) ────────────────────
 
@@ -40,6 +40,7 @@ export const IPC = {
   EVENT_TASK_UPDATE: 'event:task-update',
   EVENT_SCHEDULER_LOG: 'event:scheduler-log',
   EVENT_SCHEDULER_STATUS: 'event:scheduler-status',
+  EVENT_LOOP_UPDATE: 'event:loop-update',
 } as const
 
 // ─── Request / Response Types ──────────────────────────────────────
@@ -55,6 +56,7 @@ export interface CreateTaskOpts {
     agent?: string
     timeout?: number
     retry?: { max?: number; delay?: number }
+    skills?: string[]
   }
   skills?: string[]
   externalDirs?: Array<{
@@ -66,6 +68,8 @@ export interface CreateTaskOpts {
   }>
   allowTools?: string[]
   denyTools?: string[]
+  /** Loop Engineering: agent loop config for this task */
+  agentLoop?: AgentLoopConfig
 }
 
 export interface TreeNode {
@@ -85,6 +89,14 @@ export interface SkillInfo {
   name: string
   content: string | null
 }
+
+// ─── Agent Loop real-time events (main -> renderer) ────────────────
+
+export type LoopEventData =
+  | { event: 'iteration-started'; name: string; iteration: number }
+  | { event: 'iteration-completed'; name: string; iteration: number; passed: boolean }
+  | { event: 'verification-failed'; name: string; iteration: number; verification: { passed: boolean; message: string } }
+  | { event: 'completed'; name: string; success: boolean; iterations: number }
 
 // ─── Exposed API (preload → renderer) ──────────────────────────────
 
@@ -126,4 +138,5 @@ export interface ExposedAPI {
   onTaskUpdate(callback: (data: { name: string; status: TaskStatus }) => void): () => void
   onSchedulerLog(callback: (data: { level: string; msg: string; ts?: number }) => void): () => void
   onSchedulerStatus(callback: (data: { running: boolean }) => void): () => void
+  onLoopUpdate(callback: (data: LoopEventData) => void): () => void
 }

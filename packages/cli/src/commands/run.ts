@@ -1,12 +1,12 @@
 import { Command } from 'commander'
-import { TaskStore, executeTask } from '@sentinel/core'
+import { TaskStore, runTaskExecution } from '@sentinel/core'
 import chalk from 'chalk'
 
 export const runCommand = new Command('run')
   .description('Run a task immediately')
   .argument('<name>', 'Task name')
   .option('--tasks-dir <dir>', 'Tasks directory', 'tasks')
-  .option('--dry', 'Dry run — show command without executing')
+  .option('--dry', 'Dry run - show command without executing')
   .action(async (name: string, options: { tasksDir: string; dry?: boolean }) => {
     const store = new TaskStore({ tasksDir: options.tasksDir })
 
@@ -22,37 +22,44 @@ export const runCommand = new Command('run')
     console.log(chalk.bold(`\nRunning task: ${name}`))
     console.log(`  Directory: ${info.dir}`)
     console.log(`  Prompt: ${config.execution.prompt.slice(0, 100)}...`)
+    if (config.agentLoop?.enabled) {
+      console.log(`  Agent Loop: on (max ${config.agentLoop.maxIterations ?? 3} iterations, ${config.agentLoop.verification.type} verification)`)
+    }
     console.log()
 
     if (options.dry) {
-      console.log('Dry run — command would be:')
+      console.log('Dry run - command would be:')
       console.log(`  opencode run --dir ${info.dir} "${config.execution.prompt}"`)
       return
     }
 
-    const result = await executeTask({
-      taskDir: info.dir,
-      config,
+    // Same execution path as the scheduler: agent loop when enabled,
+    // bounded retries otherwise, plus history persistence, status
+    // transitions and webhook notifications.
+    const outcome = await runTaskExecution({
+      taskStore: store,
+      name,
+      info,
+      onLog: (level, msg) => {
+        if (level === 'error') console.error(chalk.red(`  [${level}] ${msg}`))
+        else console.log(chalk.gray(`  [${level}] ${msg}`))
+      },
     })
 
-    const history = await store.getHistory(name)
-    history.push(result.record)
-    await store.saveHistory(name, history)
+    if (outcome.loopResult) {
+      console.log(`  Loop iterations: ${outcome.loopResult.iterations}`)
+    }
 
-    // Update task status
-    const newStatus = result.record.status === 'success' ? 'scheduled' : 'failed'
-    await store.setStatus(name, newStatus)
-
-    if (result.record.status === 'success') {
+    if (outcome.ok) {
       console.log(chalk.green(`\nTask "${name}" completed successfully`))
-      if (result.stdout) {
+      if (outcome.lastRecord?.output) {
         console.log(chalk.gray('\nOutput (last 2000 chars):'))
-        console.log(result.stdout.slice(-2000))
+        console.log(outcome.lastRecord.output.slice(-2000))
       }
     } else {
-      console.log(chalk.red(`\nTask "${name}" failed (exit code: ${result.record.exitCode})`))
-      if (result.record.error) {
-        console.log(chalk.red(`  Error: ${result.record.error}`))
+      console.log(chalk.red(`\nTask "${name}" failed (exit code: ${outcome.lastRecord?.exitCode})`))
+      if (outcome.lastRecord?.error) {
+        console.log(chalk.red(`  Error: ${outcome.lastRecord.error}`))
       }
     }
   })

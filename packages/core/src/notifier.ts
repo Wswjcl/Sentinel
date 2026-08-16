@@ -1,13 +1,7 @@
-import { createRequire } from 'node:module'
+import http from 'node:http'
+import https from 'node:https'
 import type { TaskConfig, TaskRunRecord } from './types.js'
-import { sentinelEvents } from './events.js'
-
-const require = createRequire(import.meta.url)
-let http: typeof import('node:http') | undefined
-let https: typeof import('node:https') | undefined
-
-try { http = require('node:http') } catch {}
-try { https = require('node:https') } catch {}
+import type { VerificationResult } from './verification.js'
 
 export interface NotifierOptions {
   /** Called when a webhook dispatch succeeds or fails (for logging) */
@@ -15,35 +9,19 @@ export interface NotifierOptions {
 }
 
 /**
- * Subscribes to sentinelEvents and dispatches webhook notifications
- * based on task config's notify settings.
+ * Dispatches webhook notifications based on task config's notify
+ * settings. All methods are explicit - callers invoke them at the
+ * appropriate points (scheduler, runner, IPC handlers).
  */
 export class Notifier {
   private onLog?: NotifierOptions['onLog']
 
   constructor(options?: NotifierOptions) {
     this.onLog = options?.onLog
-
-    sentinelEvents.on('task:run-completed', (data: { name: string; record: TaskRunRecord }) => {
-      this.handleRunCompleted(data.name, data.record).catch((err) => {
-        this.log('error', `Notifier error for ${data.name}: ${String(err)}`)
-      })
-    })
   }
 
   private log(level: 'info' | 'warn' | 'error', msg: string): void {
     this.onLog?.(level, msg)
-  }
-
-  private async handleRunCompleted(name: string, record: TaskRunRecord): Promise<void> {
-    // We need to look up the task config to check notify settings.
-    // The caller (scheduler or IPC handler) is responsible for providing
-    // the config. For now, we emit a dedicated event that consumers can
-    // listen to. The actual config lookup + webhook dispatch happens in
-    // the scheduler/desktop main process which has access to the TaskStore.
-    //
-    // This design keeps the Notifier decoupled from TaskStore.
-    // Consumers should call `notifyIfNeeded(config, record)` directly.
   }
 
   /**
@@ -51,8 +29,8 @@ export class Notifier {
    * and dispatch the webhook if configured.
    */
   async notifyIfNeeded(config: TaskConfig, record: TaskRunRecord): Promise<void> {
-    const notify = (config as any).notify
-    if (!notify || !notify.webhook_url) return
+    const notify = config.notify
+    if (!notify?.webhook_url) return
 
     const isSuccess = record.status === 'success'
     const shouldNotify =
@@ -79,17 +57,41 @@ export class Notifier {
     }
   }
 
+  /**
+   * Dispatch an intermediate failure webhook for an agent-loop iteration
+   * (onFailure: 'notify'). Respects the on_failure webhook setting.
+   */
+  async notifyLoopIterationFailed(
+    config: TaskConfig,
+    iteration: number,
+    verification: VerificationResult,
+  ): Promise<void> {
+    const notify = config.notify
+    if (!notify?.webhook_url || notify.on_failure !== 'webhook') return
+
+    const payload = {
+      task: config.name,
+      event: 'loop.iteration-failed',
+      iteration,
+      status: 'failed',
+      error: verification.message,
+      timestamp: new Date().toISOString(),
+    }
+
+    try {
+      await this.sendWebhook(notify.webhook_url, payload)
+      this.log('info', `Loop iteration ${iteration + 1} failure notice sent for task ${config.name}`)
+    } catch (err) {
+      this.log('warn', `Loop failure webhook failed for task ${config.name}: ${String(err)}`)
+    }
+  }
+
   private sendWebhook(url: string, payload: Record<string, unknown>): Promise<void> {
     return new Promise((resolve, reject) => {
       const data = JSON.stringify(payload)
       const parsedUrl = new URL(url)
       const isHttps = parsedUrl.protocol === 'https:'
       const mod = isHttps ? https : http
-
-      if (!mod) {
-        reject(new Error(`No ${isHttps ? 'https' : 'http'} module available`))
-        return
-      }
 
       const options = {
         hostname: parsedUrl.hostname,

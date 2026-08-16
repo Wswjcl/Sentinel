@@ -1,10 +1,10 @@
 import { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage } from 'electron'
 import { join, resolve } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { TaskStore, Scheduler, executeTask, isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
+import { TaskStore, Scheduler, runTaskExecution, isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
 import type { TaskConfig, ExternalDir, OpenCodeConfig } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
-import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo } from '../shared/ipc-types'
+import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData } from '../shared/ipc-types'
 
 // ─── Globals ───────────────────────────────────────────────────────
 
@@ -29,8 +29,8 @@ function createWindow(): void {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
+      backgroundThrottling: false,
     },
-    backgroundThrottling: false,
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -82,6 +82,35 @@ function setupEventForwarding(): void {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC.EVENT_SCHEDULER_STATUS, { running: false })
     }
+  })
+
+  // ── Agent Loop events (Loop Engineering) ──
+
+  const forwardLoop = (data: LoopEventData): void => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC.EVENT_LOOP_UPDATE, data)
+    }
+  }
+
+  sentinelEvents.on('loop:iteration-started', (d) => {
+    forwardLoop({ event: 'iteration-started', ...d })
+  })
+
+  sentinelEvents.on('loop:iteration-completed', (d) => {
+    forwardLoop({ event: 'iteration-completed', ...d })
+  })
+
+  sentinelEvents.on('loop:verification-failed', (d) => {
+    forwardLoop({
+      event: 'verification-failed',
+      name: d.name,
+      iteration: d.iteration,
+      verification: { passed: d.verification.passed, message: d.verification.message },
+    })
+  })
+
+  sentinelEvents.on('loop:completed', (d) => {
+    forwardLoop({ event: 'completed', ...d })
   })
 }
 
@@ -144,6 +173,18 @@ function registerIpcHandlers(): void {
           delay: opts.execution?.retry?.delay ?? 60,
         },
       },
+    }
+
+    // Agent Loop config with mode-specific validation
+    if (opts.agentLoop?.enabled) {
+      const v = opts.agentLoop.verification
+      if (v.type === 'command' && !v.command) {
+        throw new Error('agentLoop: command verification requires a command')
+      }
+      if (v.type === 'llm' && !v.criteria) {
+        throw new Error('agentLoop: llm verification requires criteria')
+      }
+      finalConfig.agentLoop = opts.agentLoop
     }
 
     // Create directories
@@ -224,6 +265,18 @@ function registerIpcHandlers(): void {
       }
     }
     if (opts.execution?.skills) existing.execution.skills = opts.execution.skills
+    if (opts.agentLoop !== undefined) {
+      if (opts.agentLoop.enabled) {
+        const v = opts.agentLoop.verification
+        if (v.type === 'command' && !v.command) {
+          throw new Error('agentLoop: command verification requires a command')
+        }
+        if (v.type === 'llm' && !v.criteria) {
+          throw new Error('agentLoop: llm verification requires criteria')
+        }
+      }
+      existing.agentLoop = opts.agentLoop
+    }
     await store.saveConfig(name, existing)
     sentinelEvents.emit('task:status-changed', { name, status: 'scheduled' })
     return { ok: true }
@@ -232,24 +285,24 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.TASKS_RUN, async (_e, name: string) => {
     const info = await store.getTaskInfo(name)
 
-    // Run asynchronously — don't await completion
-    executeTask({ taskDir: info.dir, config: info.config })
-      .then(async (result) => {
-        const history = await store.getHistory(name)
-        history.push(result.record)
-        await store.saveHistory(name, history)
-        await store.setStatus(name, result.record.status === 'success' ? 'scheduled' : 'failed')
-        sentinelEvents.emit('task:status-changed', {
-          name,
-          status: result.record.status === 'success' ? 'scheduled' : 'failed',
-        })
-        sentinelEvents.emit('task:run-completed', { name, record: result.record })
-      })
-      .catch(async (err) => {
-        sentinelEvents.emit('scheduler:log', { level: 'error', msg: `Task ${name} error: ${String(err)}` })
-        await store.setStatus(name, 'failed')
-        sentinelEvents.emit('task:status-changed', { name, status: 'failed' })
-      })
+    // Mark running immediately so the UI reflects the manual trigger
+    await store.setStatus(name, 'running')
+    sentinelEvents.emit('task:status-changed', { name, status: 'running' })
+
+    // Run asynchronously - don't await completion. Uses the shared runner
+    // so manual runs behave exactly like scheduled runs (agent loop,
+    // retries, history persistence, notifications).
+    runTaskExecution({
+      taskStore: store,
+      name,
+      info,
+      onLog: (level, msg) => {
+        // Logs are forwarded to the renderer via the scheduler:log event
+        sentinelEvents.emit('scheduler:log', { level, msg })
+      },
+    }).catch((err) => {
+      sentinelEvents.emit('scheduler:log', { level: 'error', msg: `Task ${name} error: ${String(err)}` })
+    })
 
     return { ok: true, status: 'running' }
   })

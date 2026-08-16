@@ -46,6 +46,8 @@ agentLoop:
   verification:
     # 'command' mode: run a shell command, exit code 0 = pass (zero LLM cost)
     # 'llm' mode: use LLM to semantically verify output quality
+    # Commands run via POSIX sh when available (Git provides sh on Windows);
+    # otherwise cmd is used on Windows - prefer portable POSIX syntax.
     type: command
     command: "test -f output/daily-$(date +%Y-%m-%d).md && grep -q '^##' output/daily-$(date +%Y-%m-%d).md"
     onFailure: iterate  # iterate | notify | stop

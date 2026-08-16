@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { executeTask } from './executor.js'
 import type { LoopVerification } from './types.js'
 
@@ -31,15 +31,32 @@ export interface VerificationOptions {
 
 // ─── Command Verification ───────────────────────────────────
 
+let resolvedShell: { shell: string; flag: string } | null = null
+
+/** Resolve the shell used for command execution. Prefers POSIX sh
+ *  (cross-platform command syntax - Git provides sh.exe on Windows);
+ *  falls back to cmd on Windows when no sh is on PATH. */
+export function resolveShell(): { shell: string; flag: string } {
+  if (resolvedShell) return resolvedShell
+  if (process.platform === 'win32') {
+    const probe = spawnSync('where', ['sh'], { timeout: 5000 })
+    resolvedShell = !probe.error && probe.status === 0
+      ? { shell: 'sh', flag: '-c' }
+      : { shell: 'cmd', flag: '/c' }
+  } else {
+    resolvedShell = { shell: 'sh', flag: '-c' }
+  }
+  return resolvedShell
+}
+
 function runCommandVerification(
   command: string,
   taskDir: string,
 ): Promise<VerificationResult> {
   return new Promise((resolve) => {
-    const shell = process.platform === 'win32' ? 'cmd' : 'sh'
-    const shellFlag = process.platform === 'win32' ? '/c' : '-c'
+    const { shell, flag } = resolveShell()
 
-    const proc = spawn(shell, [shellFlag, command], {
+    const proc = spawn(shell, [flag, command], {
       cwd: taskDir,
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 30_000, // 30s timeout for verification commands
