@@ -9,6 +9,8 @@ export { loadConfig } from './config.js'
 export { runAgentLoop } from './agent-loop.js'
 export { runVerification } from './verification.js'
 export { runTaskExecution } from './runner.js'
+export { FlowStore } from './flow-store.js'
+export { FlowEngine, validateFlow } from './flow.js'
 export type { SentinelAppConfig } from './config.js'
 export type {
   TaskConfig,
@@ -20,6 +22,16 @@ export type {
   TaskInfo,
   AgentLoopConfig,
   LoopVerification,
+  FlowNodeType,
+  FlowNodeBase,
+  AIFlowNode,
+  ScriptFlowNode,
+  ManualFlowNode,
+  FlowNode,
+  FlowConfig,
+  FlowNodeStatus,
+  FlowNodeRun,
+  FlowRun,
 } from './types.js'
 export type {
   OpenCodeConfig,
@@ -31,3 +43,4 @@ export type { SentinelEventMap } from './events.js'
 export type { AgentLoopOptions, AgentLoopResult } from './agent-loop.js'
 export type { VerificationOptions, VerificationResult } from './verification.js'
 export type { TaskRunnerOptions, TaskRunOutcome } from './runner.js'
+export type { FlowValidationResult, FlowEngineOptions, FlowRunOptions } from './flow.js'

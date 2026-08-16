@@ -8,6 +8,7 @@ import { schedulerCommand } from './commands/scheduler.js'
 import { initCommand } from './commands/init.js'
 import { pauseCommand } from './commands/pause.js'
 import { resumeCommand } from './commands/resume.js'
+import { flowCommand } from './commands/flow.js'
 
 const program = new Command()
 
@@ -25,5 +26,6 @@ program.addCommand(deleteCommand)
 program.addCommand(pauseCommand)
 program.addCommand(resumeCommand)
 program.addCommand(schedulerCommand)
+program.addCommand(flowCommand)
 
 program.parse()

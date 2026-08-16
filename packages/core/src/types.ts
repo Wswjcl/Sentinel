@@ -102,3 +102,94 @@ export interface TaskInfo {
   runCount: number
   history: TaskRunRecord[]
 }
+
+// ─── Flow Engineering ───────────────────────────────────────
+
+export type FlowNodeType = 'ai' | 'script' | 'manual'
+
+export interface FlowNodeBase {
+  /** Node type: 'ai' (OpenCode task), 'script' (shell command),
+   *  'manual' (human gate, optionally taken over by the AI). */
+  type: FlowNodeType
+  /** Upstream node names - DAG edges. Nodes without dependency
+   *  relations run in parallel automatically. */
+  needs?: string[]
+  /** Failure policy: 'stop' (default, downstream nodes are skipped)
+   *  or 'continue' (downstream nodes still run). */
+  onFailure?: 'stop' | 'continue'
+}
+
+export interface AIFlowNode extends FlowNodeBase {
+  type: 'ai'
+  /** Name of an existing task workspace this node executes. */
+  task: string
+  /** Prompt template. Placeholders {node.output} inject upstream node
+   *  outputs and {inputs.key} injects run inputs. Falls back to the
+   *  referenced task's own prompt when omitted. */
+  promptTemplate?: string
+  /** Model override for this node. */
+  model?: string
+}
+
+export interface ScriptFlowNode extends FlowNodeBase {
+  type: 'script'
+  /** Shell command to run inside the flow directory. Supports the same
+   *  {node.output} / {inputs.key} placeholders (raw injection - quoting
+   *  is the author's responsibility). */
+  run: string
+  /** Working directory relative to the flow directory (default '.'). */
+  cwd?: string
+  /** Timeout in seconds (default 300). */
+  timeout?: number
+}
+
+export interface ManualFlowNode extends FlowNodeBase {
+  type: 'manual'
+  /** Allow the AI agent to take over this manual step unattended. */
+  aiTakeover?: boolean
+  /** Prompt used when the AI takes over (runs in the flow directory). */
+  takeoverPrompt?: string
+}
+
+export type FlowNode = AIFlowNode | ScriptFlowNode | ManualFlowNode
+
+export interface FlowConfig {
+  name: string
+  description?: string
+  version: number
+  /** Whole-flow schedule. When set, the scheduler triggers the flow. */
+  schedule?: TaskSchedule
+  /** Max nodes running in parallel (default: engine concurrency). */
+  concurrency?: number
+  nodes: Record<string, FlowNode>
+}
+
+export type FlowNodeStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped'
+
+export interface FlowNodeRun {
+  node: string
+  type: FlowNodeType
+  status: FlowNodeStatus
+  startedAt?: string
+  finishedAt?: string
+  /** Output passed to downstream nodes (truncated stdout). */
+  output?: string
+  error?: string
+  /** Why a skipped node was skipped. */
+  skipReason?: 'upstream-failure' | 'manual-gate' | 'unreachable'
+  /** For ai nodes: the id of the task run record produced. */
+  taskRecordId?: string
+  /** Whether the AI took over a manual node. */
+  aiTakeover?: boolean
+}
+
+export interface FlowRun {
+  id: string
+  flowName: string
+  status: 'running' | 'success' | 'failed' | 'partial'
+  startedAt: string
+  finishedAt?: string
+  nodes: Record<string, FlowNodeRun>
+  /** Inputs injected at run start ({inputs.key} placeholders). */
+  inputs?: Record<string, string>
+}

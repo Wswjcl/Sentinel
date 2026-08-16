@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path'
 
 export interface SentinelAppConfig {
   tasks_dir?: string
+  flows_dir?: string
   opencode_bin?: string
   scheduler?: {
     check_interval_ms?: number

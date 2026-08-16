@@ -1,4 +1,6 @@
 import { TaskStore } from './task-store.js'
+import { FlowStore } from './flow-store.js'
+import { FlowEngine } from './flow.js'
 import { runTaskExecution } from './runner.js'
 import { shouldRunNow, shouldRunInterval } from './cron.js'
 import { sentinelEvents } from './events.js'
@@ -6,6 +8,8 @@ import type { TaskInfo } from './types.js'
 
 export interface SchedulerOptions {
   taskStore: TaskStore
+  /** When provided, flows with a schedule are triggered too. */
+  flowStore?: FlowStore
   concurrency?: number
   checkIntervalMs?: number
   opencodeBin?: string
@@ -13,6 +17,8 @@ export interface SchedulerOptions {
 
 export class Scheduler {
   private store: TaskStore
+  private flowStore?: FlowStore
+  private flowEngine?: FlowEngine
   private concurrency: number
   private checkIntervalMs: number
   private opencodeBin: string
@@ -22,9 +28,19 @@ export class Scheduler {
 
   constructor(options: SchedulerOptions) {
     this.store = options.taskStore
+    this.flowStore = options.flowStore
     this.concurrency = options.concurrency ?? 3
     this.checkIntervalMs = options.checkIntervalMs ?? 60_000
     this.opencodeBin = options.opencodeBin ?? 'opencode'
+    if (this.flowStore) {
+      this.flowEngine = new FlowEngine({
+        flowStore: this.flowStore,
+        taskStore: this.store,
+        opencodeBin: this.opencodeBin,
+        concurrency: this.concurrency,
+        onLog: (level, msg) => this.log(level, msg),
+      })
+    }
   }
 
   setLogger(cb: (level: string, msg: string) => void): void {
@@ -60,7 +76,6 @@ export class Scheduler {
   private async tick(): Promise<void> {
     const taskNames = await this.store.listTasks()
     this.log('debug', `Checking ${taskNames.length} task(s)`)
-
     for (const name of taskNames) {
       if (this.running.size >= this.concurrency) break
       if (this.running.has(name)) continue
@@ -93,6 +108,50 @@ export class Scheduler {
         }
       } catch (err) {
         this.log('error', `Error checking task ${name}: ${String(err)}`)
+      }
+    }
+
+    if (this.flowStore && this.flowEngine) {
+      await this.tickFlows()
+    }
+  }
+
+  /** Trigger flows whose whole-flow schedule is due. */
+  private async tickFlows(): Promise<void> {
+    const flowNames = await this.flowStore!.listFlows()
+
+    for (const fname of flowNames) {
+      const key = `flow:${fname}`
+      if (this.running.has(key)) continue
+
+      try {
+        const config = await this.flowStore!.getConfig(fname)
+        if (!config.schedule) continue
+
+        const runs = await this.flowStore!.getRuns(fname)
+        const lastRun = runs.length > 0 ? runs[runs.length - 1].startedAt : undefined
+        const schedule = config.schedule
+
+        let shouldRun = false
+        if (schedule.type === 'cron') {
+          shouldRun = shouldRunNow(schedule.expr, lastRun ? new Date(lastRun) : null, schedule.timezone)
+        } else if (schedule.type === 'interval') {
+          shouldRun = shouldRunInterval(schedule.expr, lastRun ? new Date(lastRun) : null)
+        } else if (schedule.type === 'once') {
+          shouldRun = !lastRun
+        }
+
+        if (shouldRun) {
+          this.log('info', `Triggering flow: ${fname} (${schedule.type})`)
+          this.running.add(key)
+          this.flowEngine!.run(fname).catch((err) => {
+            this.log('error', `Flow ${fname} error: ${String(err)}`)
+          }).finally(() => {
+            this.running.delete(key)
+          })
+        }
+      } catch (err) {
+        this.log('error', `Error checking flow ${fname}: ${String(err)}`)
       }
     }
   }

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import type { TaskStatus, TaskRunRecord } from './types.js'
+import type { TaskStatus, TaskRunRecord, FlowNodeStatus } from './types.js'
 import type { VerificationResult } from './verification.js'
 
 export interface SentinelEventMap {
@@ -14,6 +14,10 @@ export interface SentinelEventMap {
   'loop:iteration-completed': { name: string; iteration: number; passed: boolean }
   'loop:verification-failed': { name: string; iteration: number; verification: VerificationResult }
   'loop:completed': { name: string; success: boolean; iterations: number }
+  // ── Flow Engineering events ──
+  'flow:started': { name: string; runId: string }
+  'flow:node-status-changed': { name: string; runId: string; node: string; status: FlowNodeStatus }
+  'flow:completed': { name: string; runId: string; success: boolean }
 }
 
 class SentinelEventEmitter extends EventEmitter {
