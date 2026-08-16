@@ -14,7 +14,7 @@ import type {
   TreeNode,
   OutputFile,
   SkillInfo,
-} from '../../shared/ipc-types'
+} from '../../../shared/ipc-types'
 
 // ─── Task operations ───────────────────────────────────────────────
 

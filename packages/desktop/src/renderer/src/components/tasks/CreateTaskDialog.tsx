@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
-import type { CreateTaskOpts } from '../../../shared/ipc-types'
+import type { CreateTaskOpts } from '../../../../shared/ipc-types'
 import { useI18n } from '../../hooks/useI18n'
 
 const AVAILABLE_AGENTS = ['build', 'plan', 'explore', 'general']

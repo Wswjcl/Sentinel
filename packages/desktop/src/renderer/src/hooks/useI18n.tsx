@@ -24,7 +24,7 @@ function getInitialLocale(): Locale {
 interface I18nContextValue {
   locale: Locale
   setLocale: (l: Locale) => void
-  t: ReturnType<typeof useTranslation>['t']
+  t: (key: string, options?: Record<string, unknown>) => string
 }
 
 const I18nContext = createContext<I18nContextValue>({

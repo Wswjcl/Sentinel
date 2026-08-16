@@ -29,6 +29,8 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",
     "@types/node": "^20.0.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^4.4.0",
     "electron": "34.5.8",
     "electron-builder": "^25.1.0",

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import type { TaskInfo, TaskStatus, TaskRunRecord } from '@sentinel/core'
 import { ArrowLeft, Play, Pause, Trash2, RefreshCw, FolderOpen, FileText, Clock } from 'lucide-react'
 import { useI18n } from '../../hooks/useI18n'
-import type { TreeNode, OutputFile } from '../../../shared/ipc-types'
+import type { TreeNode, OutputFile } from '../../../../shared/ipc-types'
 
 interface TaskDetailProps {
   task: TaskInfo

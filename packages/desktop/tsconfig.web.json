@@ -17,6 +17,7 @@
   },
   "include": [
     "src/renderer/src/**/*",
+    "src/renderer/src/i18n/locales/**/*.json",
     "src/shared/**/*"
   ]
 }
