@@ -8,9 +8,10 @@ import TaskList from './components/tasks/TaskList'
 import TaskDetail from './components/tasks/TaskDetail'
 import SchedulerPanel from './components/scheduler/SchedulerPanel'
 import SettingsPanel from './components/settings/SettingsPanel'
+import FlowsPanel from './components/flows/FlowsPanel'
 import './i18n'
 
-type View = 'tasks' | 'scheduler' | 'settings'
+type View = 'tasks' | 'flows' | 'scheduler' | 'settings'
 
 function AppContent() {
   const [view, setView] = useState<View>('tasks')
@@ -42,6 +43,7 @@ function AppContent() {
       {view === 'tasks' && selectedTask && (
         <TaskDetail task={selectedTask} onBack={handleBack} />
       )}
+      {view === 'flows' && <FlowsPanel />}
       {view === 'scheduler' && <SchedulerPanel />}
       {view === 'settings' && <SettingsPanel />}
     </MainLayout>

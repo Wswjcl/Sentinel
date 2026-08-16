@@ -1,10 +1,10 @@
-import { Clock, Settings, ListTodo } from 'lucide-react'
+import { Clock, Settings, ListTodo, Workflow } from 'lucide-react'
 import { useScheduler } from '../../hooks/useScheduler'
 import { useI18n } from '../../hooks/useI18n'
 
 interface SidebarProps {
   currentView: string
-  onViewChange: (view: 'tasks' | 'scheduler' | 'settings') => void
+  onViewChange: (view: 'tasks' | 'flows' | 'scheduler' | 'settings') => void
 }
 
 export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
@@ -13,6 +13,7 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
 
   const navItems = [
     { id: 'tasks' as const, label: t('sidebar.tasks'), icon: ListTodo },
+    { id: 'flows' as const, label: t('sidebar.flows'), icon: Workflow },
     { id: 'scheduler' as const, label: t('sidebar.scheduler'), icon: Clock },
     { id: 'settings' as const, label: t('sidebar.settings'), icon: Settings },
   ]

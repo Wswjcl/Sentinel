@@ -1,10 +1,10 @@
 import { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage } from 'electron'
 import { join, resolve } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { TaskStore, Scheduler, runTaskExecution, isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
-import type { TaskConfig, ExternalDir, OpenCodeConfig } from '@sentinel/core'
+import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, validateFlow, isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
+import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
-import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData } from '../shared/ipc-types'
+import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData } from '../shared/ipc-types'
 
 // ─── Globals ───────────────────────────────────────────────────────
 
@@ -14,7 +14,17 @@ let tray: Tray | null = null
 let isQuitting = false
 
 const TASKS_DIR = resolve(app.getPath('home'), '.sentinel', 'tasks')
+const FLOWS_DIR = resolve(app.getPath('home'), '.sentinel', 'flows')
 const store = new TaskStore({ tasksDir: TASKS_DIR })
+const flowStore = new FlowStore({ flowsDir: FLOWS_DIR })
+const flowEngine = new FlowEngine({
+  flowStore,
+  taskStore: store,
+  onLog: (level, msg) => {
+    // Flow engine logs surface in the scheduler log panel
+    sentinelEvents.emit('scheduler:log', { level, msg })
+  },
+})
 
 // ─── Window Creation ───────────────────────────────────────────────
 
@@ -111,6 +121,26 @@ function setupEventForwarding(): void {
 
   sentinelEvents.on('loop:completed', (d) => {
     forwardLoop({ event: 'completed', ...d })
+  })
+
+  // ── Flow events (Flow Engineering) ──
+
+  const forwardFlow = (data: FlowEventData): void => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC.EVENT_FLOW_UPDATE, data)
+    }
+  }
+
+  sentinelEvents.on('flow:started', (d) => {
+    forwardFlow({ event: 'started', ...d })
+  })
+
+  sentinelEvents.on('flow:node-status-changed', (d) => {
+    forwardFlow({ event: 'node-status-changed', ...d })
+  })
+
+  sentinelEvents.on('flow:completed', (d) => {
+    forwardFlow({ event: 'completed', ...d })
   })
 }
 
@@ -417,12 +447,69 @@ function registerIpcHandlers(): void {
     return { ok: true }
   })
 
+  // ── Flows ──
+
+  ipcMain.handle(IPC.FLOWS_LIST, async () => {
+    const names = await flowStore.listFlows()
+    const flows = await Promise.all(
+      names.map(async (n) => {
+        try {
+          return {
+            config: await flowStore.getConfig(n),
+            dir: flowStore.getFlowDir(n),
+            runs: await flowStore.getRuns(n),
+          }
+        } catch {
+          return null
+        }
+      }),
+    )
+    return flows.filter(Boolean)
+  })
+
+  ipcMain.handle(IPC.FLOWS_GET, async (_e, name: string) => {
+    return {
+      config: await flowStore.getConfig(name),
+      dir: flowStore.getFlowDir(name),
+      runs: await flowStore.getRuns(name),
+    }
+  })
+
+  ipcMain.handle(IPC.FLOWS_SAVE, async (_e, name: string, config: FlowConfig) => {
+    const result = validateFlow(config)
+    if (!result.valid) {
+      throw new Error(`Invalid flow: ${result.errors.join('; ')}`)
+    }
+    // Disallow renaming through save - name is the directory identity
+    await flowStore.saveConfig(name, { ...config, name })
+    return { ok: true }
+  })
+
+  ipcMain.handle(IPC.FLOWS_DELETE, async (_e, name: string) => {
+    await flowStore.deleteFlow(name)
+    return { ok: true }
+  })
+
+  ipcMain.handle(IPC.FLOWS_RUN, async (_e, name: string, inputs?: Record<string, string>) => {
+    // Verify the flow loads before firing the async run
+    await flowStore.getConfig(name)
+    flowEngine.run(name, { inputs }).catch((err) => {
+      sentinelEvents.emit('scheduler:log', { level: 'error', msg: `Flow ${name} error: ${String(err)}` })
+    })
+    return { ok: true }
+  })
+
+  ipcMain.handle(IPC.FLOWS_VALIDATE, (_e, config: FlowConfig) => {
+    return validateFlow(config)
+  })
+
   // ── Scheduler ──
 
   ipcMain.handle(IPC.SCHEDULER_START, async () => {
     if (scheduler?.isRunning) return { ok: true }
     await store.init()
-    scheduler = new Scheduler({ taskStore: store, concurrency: 3, checkIntervalMs: 60_000 })
+    await flowStore.init()
+    scheduler = new Scheduler({ taskStore: store, flowStore, concurrency: 3, checkIntervalMs: 60_000 })
     scheduler.setLogger((level, msg) => {
       // Logs are forwarded via sentinelEvents — no additional action needed
     })
@@ -634,6 +721,7 @@ app.whenReady().then(async () => {
   })
 
   await store.init()
+  await flowStore.init()
   setupMenu()
   registerIpcHandlers()
   setupEventForwarding()

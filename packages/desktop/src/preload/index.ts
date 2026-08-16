@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { TaskStatus } from '@sentinel/core'
+import type { TaskStatus, FlowConfig } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
-import type { ExposedAPI, LoopEventData } from '../shared/ipc-types'
+import type { ExposedAPI, LoopEventData, FlowEventData } from '../shared/ipc-types'
 
 const api: ExposedAPI = {
   // ── Tasks ──
@@ -23,6 +23,14 @@ const api: ExposedAPI = {
   // ── OpenCode config ──
   getOpenCodeConfig: (name) => ipcRenderer.invoke(IPC.TASKS_OPENCODE_GET, name),
   updateOpenCodeConfig: (name, config) => ipcRenderer.invoke(IPC.TASKS_OPENCODE_UPDATE, name, config),
+
+  // ── Flows ──
+  getFlows: () => ipcRenderer.invoke(IPC.FLOWS_LIST),
+  getFlow: (name) => ipcRenderer.invoke(IPC.FLOWS_GET, name),
+  saveFlow: (name, config: FlowConfig) => ipcRenderer.invoke(IPC.FLOWS_SAVE, name, config),
+  deleteFlow: (name) => ipcRenderer.invoke(IPC.FLOWS_DELETE, name),
+  runFlow: (name, inputs) => ipcRenderer.invoke(IPC.FLOWS_RUN, name, inputs),
+  validateFlowConfig: (config) => ipcRenderer.invoke(IPC.FLOWS_VALIDATE, config),
 
   // ── Scheduler ──
   startScheduler: () => ipcRenderer.invoke(IPC.SCHEDULER_START),
@@ -60,6 +68,12 @@ const api: ExposedAPI = {
     const handler = (_event: Electron.IpcRendererEvent, data: LoopEventData) => callback(data)
     ipcRenderer.on(IPC.EVENT_LOOP_UPDATE, handler)
     return () => ipcRenderer.removeListener(IPC.EVENT_LOOP_UPDATE, handler)
+  },
+
+  onFlowUpdate: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: FlowEventData) => callback(data)
+    ipcRenderer.on(IPC.EVENT_FLOW_UPDATE, handler)
+    return () => ipcRenderer.removeListener(IPC.EVENT_FLOW_UPDATE, handler)
   },
 }
 

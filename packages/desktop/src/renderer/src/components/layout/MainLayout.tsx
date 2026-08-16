@@ -4,7 +4,7 @@ import TitleBar from './TitleBar'
 
 interface MainLayoutProps {
   currentView: string
-  onViewChange: (view: 'tasks' | 'scheduler' | 'settings') => void
+  onViewChange: (view: 'tasks' | 'flows' | 'scheduler' | 'settings') => void
   children: ReactNode
 }
 

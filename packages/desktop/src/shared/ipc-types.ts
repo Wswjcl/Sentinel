@@ -1,4 +1,7 @@
-import type { TaskConfig, TaskInfo, TaskRunRecord, TaskStatus, AgentLoopConfig } from '@sentinel/core'
+import type {
+  TaskConfig, TaskInfo, TaskRunRecord, TaskStatus, AgentLoopConfig,
+  FlowConfig, FlowRun, FlowNodeStatus,
+} from '@sentinel/core'
 
 // ─── IPC Channel Names (single source of truth) ────────────────────
 
@@ -23,6 +26,14 @@ export const IPC = {
   TASKS_OPENCODE_GET: 'tasks:opencode:get',
   TASKS_OPENCODE_UPDATE: 'tasks:opencode:update',
 
+  // Flows
+  FLOWS_LIST: 'flows:list',
+  FLOWS_GET: 'flows:get',
+  FLOWS_SAVE: 'flows:save',
+  FLOWS_DELETE: 'flows:delete',
+  FLOWS_RUN: 'flows:run',
+  FLOWS_VALIDATE: 'flows:validate',
+
   // Scheduler
   SCHEDULER_START: 'scheduler:start',
   SCHEDULER_STOP: 'scheduler:stop',
@@ -41,6 +52,7 @@ export const IPC = {
   EVENT_SCHEDULER_LOG: 'event:scheduler-log',
   EVENT_SCHEDULER_STATUS: 'event:scheduler-status',
   EVENT_LOOP_UPDATE: 'event:loop-update',
+  EVENT_FLOW_UPDATE: 'event:flow-update',
 } as const
 
 // ─── Request / Response Types ──────────────────────────────────────
@@ -98,6 +110,19 @@ export type LoopEventData =
   | { event: 'verification-failed'; name: string; iteration: number; verification: { passed: boolean; message: string } }
   | { event: 'completed'; name: string; success: boolean; iterations: number }
 
+// ─── Flow data types ────────────────────────────────────────────────
+
+export interface FlowInfo {
+  config: FlowConfig
+  dir: string
+  runs: FlowRun[]
+}
+
+export type FlowEventData =
+  | { event: 'started'; name: string; runId: string }
+  | { event: 'node-status-changed'; name: string; runId: string; node: string; status: FlowNodeStatus }
+  | { event: 'completed'; name: string; runId: string; success: boolean }
+
 // ─── Exposed API (preload → renderer) ──────────────────────────────
 
 export interface ExposedAPI {
@@ -121,6 +146,14 @@ export interface ExposedAPI {
   getOpenCodeConfig(name: string): Promise<Record<string, unknown>>
   updateOpenCodeConfig(name: string, config: Record<string, unknown>): Promise<{ ok: boolean }>
 
+  // Flows
+  getFlows(): Promise<FlowInfo[]>
+  getFlow(name: string): Promise<FlowInfo>
+  saveFlow(name: string, config: FlowConfig): Promise<{ ok: boolean }>
+  deleteFlow(name: string): Promise<{ ok: boolean }>
+  runFlow(name: string, inputs?: Record<string, string>): Promise<{ ok: boolean }>
+  validateFlowConfig(config: FlowConfig): Promise<{ valid: boolean; errors: string[] }>
+
   // Scheduler
   startScheduler(): Promise<{ ok: boolean }>
   stopScheduler(): Promise<{ ok: boolean }>
@@ -139,4 +172,5 @@ export interface ExposedAPI {
   onSchedulerLog(callback: (data: { level: string; msg: string; ts?: number }) => void): () => void
   onSchedulerStatus(callback: (data: { running: boolean }) => void): () => void
   onLoopUpdate(callback: (data: LoopEventData) => void): () => void
+  onFlowUpdate(callback: (data: FlowEventData) => void): () => void
 }
