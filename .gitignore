@@ -3,3 +3,4 @@ dist/
 *.tsbuildinfo
 tasks/*/output/
 .history.json
+packages/desktop/data/

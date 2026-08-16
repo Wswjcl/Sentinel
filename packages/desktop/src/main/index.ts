@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage } from 'electron'
-import { join, resolve } from 'node:path'
+import { promises as fs } from 'node:fs'
+import { join, resolve, dirname } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, validateFlow, isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
 import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig } from '@sentinel/core'
@@ -13,8 +14,48 @@ let scheduler: Scheduler | null = null
 let tray: Tray | null = null
 let isQuitting = false
 
-const TASKS_DIR = resolve(app.getPath('home'), '.sentinel', 'tasks')
-const FLOWS_DIR = resolve(app.getPath('home'), '.sentinel', 'flows')
+/**
+ * Resolve the data directory - data lives next to the program, not in
+ * the user home:
+ * - portable build: the app self-extracts to a temp dir at runtime, so
+ *   PORTABLE_EXECUTABLE_DIR is the only reliable pointer to the real
+ *   location of the portable exe
+ * - installed build: next to the executable
+ * - dev: project-local packages/desktop/data
+ */
+function resolveDataDir(): string {
+  const portableDir = process.env.PORTABLE_EXECUTABLE_DIR
+  if (portableDir) return join(portableDir, 'data')
+  if (app.isPackaged) return join(dirname(process.execPath), 'data')
+  return join(process.cwd(), 'data')
+}
+
+const DATA_DIR = resolveDataDir()
+
+/**
+ * One-time migration from the legacy ~/.sentinel layout: copies
+ * tasks/flows into the data dir when they exist there but not yet in
+ * the new location. Never overwrites existing data.
+ */
+async function migrateLegacyData(): Promise<void> {
+  const legacyRoot = resolve(app.getPath('home'), '.sentinel')
+  for (const sub of ['tasks', 'flows']) {
+    const from = join(legacyRoot, sub)
+    const to = join(DATA_DIR, sub)
+    try {
+      await fs.access(to)
+      continue // already migrated (or created) - keep it
+    } catch {}
+    try {
+      await fs.access(from)
+      await fs.cp(from, to, { recursive: true })
+      console.log(`[sentinel] migrated legacy data: ${from} -> ${to}`)
+    } catch {}
+  }
+}
+
+const TASKS_DIR = join(DATA_DIR, 'tasks')
+const FLOWS_DIR = join(DATA_DIR, 'flows')
 const store = new TaskStore({ tasksDir: TASKS_DIR })
 const flowStore = new FlowStore({ flowsDir: FLOWS_DIR })
 const flowEngine = new FlowEngine({
@@ -550,6 +591,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.APP_VERSION, () => {
     return app.getVersion()
   })
+
+  ipcMain.handle(IPC.APP_DATA, () => {
+    return DATA_DIR
+  })
 }
 
 // ─── System Tray ────────────────────────────────────────────────────
@@ -720,6 +765,7 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  await migrateLegacyData()
   await store.init()
   await flowStore.init()
   setupMenu()

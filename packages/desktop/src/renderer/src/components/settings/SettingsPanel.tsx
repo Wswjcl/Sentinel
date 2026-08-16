@@ -7,9 +7,11 @@ export default function SettingsPanel() {
   const { theme, setTheme } = useTheme()
   const { locale, setLocale, t } = useI18n()
   const [version, setVersion] = useState('')
+  const [dataDir, setDataDir] = useState('')
 
   useEffect(() => {
     window.api.getAppVersion().then(setVersion).catch(() => setVersion('unknown'))
+    window.api.getAppDataDir().then(setDataDir).catch(() => setDataDir(''))
   }, [])
 
   return (
@@ -113,7 +115,7 @@ export default function SettingsPanel() {
             </div>
           </div>
           <div className="bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text)] font-mono break-all">
-            {t('settings.tasksDirectoryInfo')}
+            {dataDir ? `${dataDir}${dataDir.endsWith('/') || dataDir.endsWith('\\') ? '' : '\\'}tasks` : t('settings.tasksDirectoryInfo')}
           </div>
         </div>
       </section>

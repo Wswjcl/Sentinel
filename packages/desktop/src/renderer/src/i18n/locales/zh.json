@@ -213,7 +213,7 @@
     "languageDesc": "选择你偏好的语言",
     "data": "数据",
     "tasksDirectory": "任务目录",
-    "tasksDirectoryDesc": "所有任务工作区存储在此",
+    "tasksDirectoryDesc": "数据随程序存放：任务与流程存储在程序目录下的 data 文件夹",
     "tasksDirectoryInfo": "通过 SENTINEL_TASKS_DIR 环境变量或 CLI 标志配置",
     "shortcuts": "快捷键",
     "shortcutCreate": "新建任务",

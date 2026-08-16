@@ -46,6 +46,7 @@ export const IPC = {
 
   // App
   APP_VERSION: 'app:version',
+  APP_DATA: 'app:data',
 
   // Real-time events (main → renderer)
   EVENT_TASK_UPDATE: 'event:task-update',
@@ -166,6 +167,7 @@ export interface ExposedAPI {
 
   // App
   getAppVersion(): Promise<string>
+  getAppDataDir(): Promise<string>
 
   // Real-time events (return cleanup function)
   onTaskUpdate(callback: (data: { name: string; status: TaskStatus }) => void): () => void

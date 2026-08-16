@@ -213,7 +213,7 @@
     "languageDesc": "Choose your preferred language",
     "data": "Data",
     "tasksDirectory": "Tasks Directory",
-    "tasksDirectoryDesc": "All task workspaces are stored here",
+    "tasksDirectoryDesc": "Data lives next to the app: tasks and flows are stored in the data folder under the program directory",
     "tasksDirectoryInfo": "Configured via SENTINEL_TASKS_DIR environment variable or CLI flag",
     "shortcuts": "Keyboard Shortcuts",
     "shortcutCreate": "Create new task",

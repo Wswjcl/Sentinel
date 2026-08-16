@@ -44,6 +44,7 @@ const api: ExposedAPI = {
 
   // ── App ──
   getAppVersion: () => ipcRenderer.invoke(IPC.APP_VERSION),
+  getAppDataDir: () => ipcRenderer.invoke(IPC.APP_DATA),
 
   // ── Real-time events ──
   onTaskUpdate: (callback) => {
