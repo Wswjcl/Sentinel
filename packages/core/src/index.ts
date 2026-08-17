@@ -10,7 +10,7 @@ export { runAgentLoop } from './agent-loop.js'
 export { runVerification } from './verification.js'
 export { runTaskExecution } from './runner.js'
 export { FlowStore } from './flow-store.js'
-export { FlowEngine, validateFlow } from './flow.js'
+export { FlowEngine, validateFlow, edgeTarget, edgeCondition } from './flow.js'
 export type { SentinelAppConfig } from './config.js'
 export type {
   TaskConfig,
@@ -24,6 +24,8 @@ export type {
   LoopVerification,
   FlowNodeType,
   FlowNodeBase,
+  FlowEdge,
+  FlowEdgeCondition,
   AIFlowNode,
   ScriptFlowNode,
   ManualFlowNode,

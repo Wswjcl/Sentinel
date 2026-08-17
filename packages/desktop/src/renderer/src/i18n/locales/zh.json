@@ -171,6 +171,13 @@
     "onFailureContinue": "继续下游",
     "deleteNode": "删除节点",
     "cannotDeleteLastNode": "流程至少需要一个节点，无法删除",
+    "clone": "克隆（复用定义，独立运行历史）",
+    "resume": "恢复",
+    "resumeDesc": "从该次运行恢复：复用已成功节点的输出，只重跑剩余节点",
+    "condAdd": "添加依赖",
+    "condSuccess": "上游成功时执行",
+    "condFailure": "上游失败时执行（补偿分支）",
+    "condFinished": "上游结束即执行（不论成败）",
     "autosave": "修改即时保存",
     "flowStatus": {
       "success": "成功",

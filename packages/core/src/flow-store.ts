@@ -77,6 +77,30 @@ export class FlowStore {
     await fs.rm(this.getFlowDir(name), { recursive: true, force: true })
   }
 
+  /** Clone a flow under a new name (template instantiation): copies the
+   *  workspace, rewrites the config name, starts with empty run history. */
+  async cloneFlow(source: string, target: string): Promise<void> {
+    if (!isValidTaskName(target)) {
+      throw new Error(`Invalid flow name: ${target}`)
+    }
+    const config = await this.getConfig(source)
+    const from = this.getFlowDir(source)
+    const to = this.getFlowDir(target)
+    try {
+      await fs.access(to)
+      throw new Error(`Flow already exists: ${target}`)
+    } catch (err) {
+      if ((err as Error).message.includes('already exists')) throw err
+    }
+    await fs.cp(from, to, { recursive: true })
+    await fs.rm(join(to, RUNS_FILE), { force: true })
+    await fs.writeFile(
+      join(to, FLOW_CONFIG_FILE),
+      stringifyYaml({ ...config, name: target }),
+      'utf-8',
+    )
+  }
+
   async getRuns(name: string): Promise<FlowRun[]> {
     const runsPath = this.safeFlowPath(name, RUNS_FILE)
     try {

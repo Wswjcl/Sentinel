@@ -33,6 +33,7 @@ export const IPC = {
   FLOWS_DELETE: 'flows:delete',
   FLOWS_RUN: 'flows:run',
   FLOWS_VALIDATE: 'flows:validate',
+  FLOWS_CLONE: 'flows:clone',
 
   // Scheduler
   SCHEDULER_START: 'scheduler:start',
@@ -152,7 +153,8 @@ export interface ExposedAPI {
   getFlow(name: string): Promise<FlowInfo>
   saveFlow(name: string, config: FlowConfig): Promise<{ ok: boolean }>
   deleteFlow(name: string): Promise<{ ok: boolean }>
-  runFlow(name: string, inputs?: Record<string, string>): Promise<{ ok: boolean }>
+  runFlow(name: string, inputs?: Record<string, string>, resumeRunId?: string): Promise<{ ok: boolean }>
+  cloneFlow(name: string, newName?: string): Promise<{ ok: boolean; name: string }>
   validateFlowConfig(config: FlowConfig): Promise<{ valid: boolean; errors: string[] }>
 
   // Scheduler

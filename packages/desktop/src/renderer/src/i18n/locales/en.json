@@ -171,6 +171,13 @@
     "onFailureContinue": "Continue downstream",
     "deleteNode": "Delete node",
     "cannotDeleteLastNode": "A flow needs at least one node - cannot delete",
+    "clone": "Clone (reuse the definition, independent run history)",
+    "resume": "Resume",
+    "resumeDesc": "Resume from this run: successful nodes' outputs are reused, only the rest re-run",
+    "condAdd": "Add dependency",
+    "condSuccess": "Run when upstream succeeds",
+    "condFailure": "Run when upstream fails (compensation branch)",
+    "condFinished": "Run when upstream finishes (regardless of outcome)",
     "autosave": "Changes save instantly",
     "flowStatus": {
       "success": "Success",

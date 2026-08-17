@@ -9,12 +9,26 @@ import { sentinelEvents } from './events.js'
 import type {
   AIFlowNode,
   FlowConfig,
+  FlowEdge,
+  FlowEdgeCondition,
   FlowNodeRun,
   FlowRun,
   ManualFlowNode,
   ScriptFlowNode,
   TaskConfig,
 } from './types.js'
+
+// ─── Edge helpers ───────────────────────────────────────────
+
+/** The upstream node name a needs entry points at. */
+export function edgeTarget(need: string | FlowEdge): string {
+  return typeof need === 'string' ? need : need.node
+}
+
+/** The condition under which a needs entry is satisfied. */
+export function edgeCondition(need: string | FlowEdge): FlowEdgeCondition {
+  return typeof need === 'string' ? 'success' : (need.on ?? 'success')
+}
 
 // ─── Validation ─────────────────────────────────────────────
 
@@ -45,12 +59,16 @@ export function validateFlow(config: FlowConfig): FlowValidationResult {
       errors.push(`node "${name}" has no type`)
       continue
     }
-    if ((node.needs ?? []).includes(name)) {
+    if ((node.needs ?? []).some((need) => edgeTarget(need) === name)) {
       errors.push(`node "${name}" depends on itself`)
     }
-    for (const dep of node.needs ?? []) {
-      if (!(dep in nodes)) {
-        errors.push(`node "${name}" needs unknown node "${dep}"`)
+    for (const need of node.needs ?? []) {
+      if (!(edgeTarget(need) in nodes)) {
+        errors.push(`node "${name}" needs unknown node "${edgeTarget(need)}"`)
+      }
+      if (typeof need === 'object' && need.on !== undefined &&
+          !['success', 'failure', 'finished'].includes(need.on)) {
+        errors.push(`node "${name}" has invalid edge condition "${String(need.on)}"`)
       }
     }
     if (node.type === 'ai' && !node.task) {
@@ -67,10 +85,10 @@ export function validateFlow(config: FlowConfig): FlowValidationResult {
     const indegree: Record<string, number> = {}
     for (const n of nodeNames) {
       dependents[n] = []
-      indegree[n] = new Set(nodes[n].needs ?? []).size
+      indegree[n] = new Set((nodes[n].needs ?? []).map(edgeTarget)).size
     }
     for (const [name, node] of Object.entries(nodes)) {
-      for (const dep of new Set(node.needs ?? [])) {
+      for (const dep of new Set((node.needs ?? []).map(edgeTarget))) {
         if (dep in dependents) dependents[dep].push(name)
       }
     }
@@ -105,6 +123,9 @@ export interface FlowEngineOptions {
 export interface FlowRunOptions {
   /** Run inputs, referenced via {inputs.key} placeholders. */
   inputs?: Record<string, string>
+  /** Resume a previous run: successful nodes' outputs are reused as-is
+   *  and only the remaining nodes execute. */
+  resumeFromRunId?: string
 }
 
 /**
@@ -152,14 +173,51 @@ export class FlowEngine {
     for (const [name, node] of Object.entries(config.nodes)) {
       run.nodes[name] = { node: name, type: node.type, status: 'pending' }
     }
+
+    // ── Resume: reuse successful nodes from a previous run ──
+    if (runOptions?.resumeFromRunId) {
+      const runs = await this.flowStore.getRuns(flowName)
+      const prev = runs.find((r) => r.id === runOptions.resumeFromRunId)
+      if (!prev) {
+        throw new Error(`resume: run ${runOptions.resumeFromRunId} not found for flow "${flowName}"`)
+      }
+      let resumed = 0
+      for (const [name, nr] of Object.entries(prev.nodes)) {
+        if (nr.status === 'success' && run.nodes[name]) {
+          run.nodes[name] = { ...nr, finishedAt: nr.finishedAt ?? run.startedAt }
+          resumed++
+        }
+      }
+      run.resumedFrom = prev.id
+      this.log('info', `Resuming from run ${prev.id.slice(0, 8)}: reusing ${resumed} successful node(s)`)
+    }
+
     await this.flowStore.saveRun(flowName, run)
     sentinelEvents.emit('flow:started', { name: flowName, runId })
     this.log('info', `Flow ${flowName} started (run ${runId.slice(0, 8)}, ${Object.keys(run.nodes).length} nodes)`)
 
     const concurrency = config.concurrency ?? this.concurrency
+    const maxTotalMs =
+      config.maxTotalSeconds != null ? config.maxTotalSeconds * 1000 : null
+    const runStartedAt = Date.now()
     const inflight = new Map<string, Promise<void>>()
 
     while (!this.allSettled(run)) {
+      // ── Budget guard: stop launching new nodes once the wall-clock
+      // budget is exhausted (in-flight nodes run to completion) ──
+      if (maxTotalMs !== null && Date.now() - runStartedAt >= maxTotalMs) {
+        this.log('warn', `Flow ${flowName} wall-clock budget of ${config.maxTotalSeconds}s exceeded, stopping`)
+        for (const nr of Object.values(run.nodes)) {
+          if (nr.status === 'pending') {
+            nr.status = 'skipped'
+            nr.skipReason = 'budget-exhausted'
+            nr.finishedAt = new Date().toISOString()
+          }
+        }
+        await this.flowStore.saveRun(flowName, run)
+        break
+      }
+
       for (const name of this.readyNodes(config, run)) {
         if (inflight.size >= concurrency) break
         if (inflight.has(name)) continue
@@ -198,13 +256,19 @@ export class FlowEngine {
       await this.flowStore.saveRun(flowName, run)
     }
 
-    // Finalize flow status
+    // Finalize flow status: 'success' = everything that should run did;
+    // 'failed' = blocked (legacy failure propagation, budget exhaustion
+    // or unreachable nodes); 'partial' = failures but all reachable
+    // nodes completed (including conditional branches not taken).
     const nodeRuns = Object.values(run.nodes)
     const anyFailed = nodeRuns.some((n) => n.status === 'failed')
     const blocked = nodeRuns.some(
-      (n) => n.status === 'skipped' && n.skipReason !== 'manual-gate',
+      (n) =>
+        n.status === 'skipped' &&
+        n.skipReason !== 'manual-gate' &&
+        n.skipReason !== 'branch-not-taken',
     )
-    run.status = !anyFailed ? 'success' : blocked ? 'failed' : 'partial'
+    run.status = blocked ? 'failed' : anyFailed ? 'partial' : 'success'
     run.finishedAt = new Date().toISOString()
     await this.flowStore.saveRun(flowName, run)
     sentinelEvents.emit('flow:completed', {
@@ -223,38 +287,60 @@ export class FlowEngine {
     )
   }
 
-  /** Nodes whose dependencies are all satisfied. A failed dependency
-   *  only satisfies its dependents when it opted into onFailure 'continue'. */
+  /** Whether a single dependency edge is satisfied by the upstream's
+   *  current state. Conditional edges ('failure'/'finished') branch on
+   *  the upstream result; plain success edges additionally honor the
+   *  legacy upstream onFailure: 'continue' policy. */
+  private edgeSatisfied(config: FlowConfig, run: FlowRun, need: string | FlowEdge): boolean {
+    const dep = edgeTarget(need)
+    const on = edgeCondition(need)
+    const depRun = run.nodes[dep]
+    if (!depRun) return false
+    if (depRun.status === 'success') return on === 'success' || on === 'finished'
+    if (depRun.status === 'failed') {
+      if (on === 'failure' || on === 'finished') return true
+      return config.nodes[dep]?.onFailure === 'continue' && on === 'success'
+    }
+    return false
+  }
+
+  /** Nodes whose dependency edges are all satisfied. */
   private readyNodes(config: FlowConfig, run: FlowRun): string[] {
     const ready: string[] = []
     for (const [name, node] of Object.entries(config.nodes)) {
       const nr = run.nodes[name]
       if (!nr || nr.status !== 'pending') continue
-      const satisfied = (node.needs ?? []).every((dep) => {
-        const depRun = run.nodes[dep]
-        if (!depRun) return false
-        if (depRun.status === 'success') return true
-        return depRun.status === 'failed' && config.nodes[dep]?.onFailure === 'continue'
-      })
+      const satisfied = (node.needs ?? []).every((need) => this.edgeSatisfied(config, run, need))
       if (satisfied) ready.push(name)
     }
     return ready
   }
 
-  /** Mark pending/running nodes that can never run as skipped. */
+  /** Mark pending/running nodes that can never run as skipped.
+   *  Plain-string edges to a failed upstream (legacy semantics) count as
+   *  'upstream-failure' (flow blocked); explicit conditional edges that
+   *  can no longer be met count as 'branch-not-taken' (by design). */
   private skipUnreachable(config: FlowConfig, run: FlowRun): void {
     for (const nr of Object.values(run.nodes)) {
-      if (nr.status === 'pending' || nr.status === 'running') {
-        const deps = config.nodes[nr.node]?.needs ?? []
-        nr.skipReason = deps.some((d) => {
-          const dr = run.nodes[d]
-          return dr?.status === 'failed' || dr?.status === 'skipped'
-        })
-          ? 'upstream-failure'
-          : 'unreachable'
-        nr.status = 'skipped'
-        nr.finishedAt = new Date().toISOString()
+      if (nr.status !== 'pending' && nr.status !== 'running') continue
+      const needs = config.nodes[nr.node]?.needs ?? []
+      let reason: FlowNodeRun['skipReason'] = 'unreachable'
+      for (const need of needs) {
+        const target = edgeTarget(need)
+        const dr = run.nodes[target]
+        if (!dr || (dr.status !== 'failed' && dr.status !== 'skipped')) continue
+        if (typeof need === 'string' && config.nodes[target]?.onFailure !== 'continue') {
+          reason = 'upstream-failure'
+          break
+        }
+        if (typeof need === 'object') {
+          reason = 'branch-not-taken'
+          // keep scanning - a plain-string blocked edge takes precedence
+        }
       }
+      nr.skipReason = reason
+      nr.status = 'skipped'
+      nr.finishedAt = new Date().toISOString()
     }
   }
 

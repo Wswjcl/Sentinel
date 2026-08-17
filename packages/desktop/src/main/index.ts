@@ -531,13 +531,33 @@ function registerIpcHandlers(): void {
     return { ok: true }
   })
 
-  ipcMain.handle(IPC.FLOWS_RUN, async (_e, name: string, inputs?: Record<string, string>) => {
+  ipcMain.handle(IPC.FLOWS_RUN, async (
+    _e,
+    name: string,
+    inputs?: Record<string, string>,
+    resumeRunId?: string,
+  ) => {
     // Verify the flow loads before firing the async run
     await flowStore.getConfig(name)
-    flowEngine.run(name, { inputs }).catch((err) => {
-      sentinelEvents.emit('scheduler:log', { level: 'error', msg: `Flow ${name} error: ${String(err)}` })
-    })
+    flowEngine
+      .run(name, { inputs, resumeFromRunId: resumeRunId })
+      .catch((err) => {
+        sentinelEvents.emit('scheduler:log', { level: 'error', msg: `Flow ${name} error: ${String(err)}` })
+      })
     return { ok: true }
+  })
+
+  ipcMain.handle(IPC.FLOWS_CLONE, async (_e, name: string, newName?: string) => {
+    let target = (newName ?? '').trim()
+    if (!target) {
+      // Auto-name: <name>-copy, <name>-copy-2, ...
+      const existing = new Set(await flowStore.listFlows())
+      let i = 1
+      target = `${name}-copy`
+      while (existing.has(target)) target = `${name}-copy-${++i}`
+    }
+    await flowStore.cloneFlow(name, target)
+    return { ok: true, name: target }
   })
 
   ipcMain.handle(IPC.FLOWS_VALIDATE, (_e, config: FlowConfig) => {

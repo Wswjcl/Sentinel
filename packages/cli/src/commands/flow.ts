@@ -24,6 +24,10 @@ schedule:
 # Max nodes running in parallel (default 3)
 concurrency: 3
 
+# Wall-clock budget for the whole flow in seconds - when exceeded,
+# no further nodes start
+# maxTotalSeconds: 3600
+
 nodes:
   # AI node - references an existing task workspace. Nodes without
   # shared dependencies run in parallel automatically.
@@ -36,6 +40,13 @@ nodes:
     type: script
     run: "echo processing {collect.output} > output/processed.txt"
     needs: [collect]
+
+  # Conditional edge - compensation branch that only runs when the
+  # upstream FAILS ({ node, on: success | failure | finished })
+  # alert:
+  #   type: script
+  #   run: "echo process failed"
+  #   needs: [{ node: process, on: failure }]
 
   # Manual node - human gate; with aiTakeover the agent handles it
   review:
@@ -54,6 +65,16 @@ function parseInputs(pairs: string[]): Record<string, string> {
       process.exit(1)
     }
     inputs[pair.slice(0, eq)] = pair.slice(eq + 1)
+  }
+  return inputs
+}
+
+async function parseInputsFile(path: string): Promise<Record<string, string>> {
+  const raw = await fs.readFile(path, 'utf-8')
+  const parsed = parseYaml(raw) as Record<string, unknown>
+  const inputs: Record<string, string> = {}
+  for (const [k, v] of Object.entries(parsed ?? {})) {
+    inputs[k] = String(v)
   }
   return inputs
 }
@@ -164,7 +185,9 @@ flowCommand
   .description('Run a flow immediately and wait for completion')
   .argument('<name>', 'Flow name')
   .option('--input <key=value>', 'Run input (repeatable, referenced as {inputs.key})', (v: string, prev: string[]) => [...(prev || []), v], [] as string[])
-  .action(async (name: string, options: { input: string[] }) => {
+  .option('--inputs-file <path>', 'YAML/JSON file of run inputs (merged with --input)')
+  .option('--resume [runId]', 'Resume a previous run - successful nodes are reused (default: latest run)')
+  .action(async (name: string, options: { input: string[]; inputsFile?: string; resume?: string | boolean }) => {
     const parent = flowCommand.optsWithGlobals()
     const appConfig = await loadConfig()
     const flowsDir = parent.flowsDir || appConfig.flows_dir || DEFAULT_FLOWS_DIR
@@ -182,10 +205,54 @@ flowCommand
       },
     })
 
-    console.log(chalk.bold(`\nRunning flow: ${name}`))
-    const run = await engine.run(name, { inputs: parseInputs(options.input) })
+    // Merge --input pairs with --inputs-file (file first, flags win)
+    const inputs = options.inputsFile
+      ? await parseInputsFile(options.inputsFile)
+      : {}
+    Object.assign(inputs, parseInputs(options.input))
+
+    let resumeFromRunId: string | undefined
+    if (options.resume) {
+      const runs = await flowStore.getRuns(name)
+      if (runs.length === 0) {
+        console.error(chalk.red(`No previous runs for flow "${name}" - nothing to resume`))
+        process.exit(1)
+      }
+      const needle = typeof options.resume === 'string' ? options.resume : null
+      const prev = needle
+        ? runs.find((r) => r.id === needle || r.id.startsWith(needle))
+        : runs[runs.length - 1]
+      if (!prev) {
+        console.error(chalk.red(`Run "${needle}" not found for flow "${name}"`))
+        process.exit(1)
+      }
+      resumeFromRunId = prev.id
+    }
+
+    console.log(chalk.bold(`\nRunning flow: ${name}${resumeFromRunId ? chalk.yellow(' (resumed)') : ''}`))
+    const run = await engine.run(name, { inputs, resumeFromRunId })
     printRun(run)
     if (run.status !== 'success') process.exitCode = 1
+  })
+
+flowCommand
+  .command('clone')
+  .description('Clone a flow under a new name with empty run history')
+  .argument('<source>', 'Source flow name')
+  .argument('<target>', 'New flow name')
+  .action(async (source: string, target: string) => {
+    const parent = flowCommand.optsWithGlobals()
+    const appConfig = await loadConfig()
+    const flowsDir = parent.flowsDir || appConfig.flows_dir || DEFAULT_FLOWS_DIR
+    const store = new FlowStore({ flowsDir })
+    try {
+      await store.cloneFlow(source, target)
+      console.log(`Flow "${source}" cloned to "${target}"`)
+      console.log(`  Run it with: sentinel flow run ${target} --input key=value`)
+    } catch (err) {
+      console.error(chalk.red(err instanceof Error ? err.message : String(err)))
+      process.exit(1)
+    }
   })
 
 flowCommand

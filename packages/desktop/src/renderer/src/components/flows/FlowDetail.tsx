@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ArrowLeft, Play, Plus, Trash2, Save } from 'lucide-react'
+import { ArrowLeft, Play, Plus, Trash2, Save, RotateCcw } from 'lucide-react'
 import type { FlowConfig, FlowNode, FlowNodeStatus, FlowRun } from '@sentinel/core'
+import { edgeTarget, edgeCondition } from '../../lib/flow-edges'
 import type { FlowInfo } from '../../../../shared/ipc-types'
 import { useI18n } from '../../hooks/useI18n'
 import FlowCanvas from './FlowCanvas'
@@ -101,7 +102,7 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
     const next: FlowConfig = { ...config, nodes }
     // Drop dangling dependency references in remaining nodes
     for (const n of Object.keys(next.nodes)) {
-      const needs = next.nodes[n].needs?.filter((d) => d !== nodeName)
+      const needs = next.nodes[n].needs?.filter((d) => edgeTarget(d) !== nodeName)
       if (needs && needs.length !== (next.nodes[n].needs ?? []).length) {
         next.nodes[n] = { ...next.nodes[n], needs: needs.length > 0 ? needs : undefined }
       }
@@ -126,21 +127,23 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
     setSelectedNode(nodeName)
   }
 
-  const runFlow = async () => {
+  const runFlow = async (resumeRunId?: string) => {
     setError(null)
     const inputs: Record<string, string> = {}
-    for (const part of inputsText.split(',')) {
-      const kv = part.trim()
-      if (!kv) continue
-      const eq = kv.indexOf('=')
-      if (eq <= 0) {
-        setError(t('flows.inputsInvalid'))
-        return
+    if (!resumeRunId) {
+      for (const part of inputsText.split(',')) {
+        const kv = part.trim()
+        if (!kv) continue
+        const eq = kv.indexOf('=')
+        if (eq <= 0) {
+          setError(t('flows.inputsInvalid'))
+          return
+        }
+        inputs[kv.slice(0, eq)] = kv.slice(eq + 1)
       }
-      inputs[kv.slice(0, eq)] = kv.slice(eq + 1)
     }
     try {
-      await window.api.runFlow(name, inputs)
+      await window.api.runFlow(name, inputs, resumeRunId)
       setRunning(true)
       setLiveStatuses({})
     } catch (err) {
@@ -184,7 +187,7 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                      focus:outline-none focus:border-[var(--color-blue)] transition-colors"
         />
         <button
-          onClick={runFlow}
+          onClick={() => void runFlow()}
           disabled={running}
           className="flex items-center gap-1.5 px-4 py-1.5 bg-[var(--color-green)] text-[var(--color-bg)] rounded-lg
                      text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
@@ -202,6 +205,7 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
             statuses={liveStatuses}
             selectedNode={selectedNode}
             onSelectNode={setSelectedNode}
+            onNodePosition={(nodeName, position) => updateNode(nodeName, { position })}
           />
 
           {/* Run history */}
@@ -221,6 +225,20 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                       <span className="text-[var(--color-text-dim)]">
                         {new Date(run.startedAt).toLocaleString()}
                       </span>
+                      {run.resumedFrom && (
+                        <span className="text-[var(--color-blue)]">↻ resumed</span>
+                      )}
+                      {(run.status === 'failed' || run.status === 'partial') && !running && (
+                        <button
+                          onClick={() => void runFlow(run.id)}
+                          className="flex items-center gap-1 ml-auto px-2 py-0.5 rounded text-[var(--color-blue)]
+                                     hover:bg-[var(--color-blue)]/10 font-medium transition-colors"
+                          title={t('flows.resumeDesc')}
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          {t('flows.resume')}
+                        </button>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-2 mt-1">
                       {Object.values(run.nodes).map((nr) => (
@@ -294,24 +312,38 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                 <label className={labelCls}>{t('flows.nodeNeeds')}</label>
                 <div className="flex flex-wrap gap-1.5">
                   {nodeNames.filter((n) => n !== selectedNode).map((n) => {
-                    const active = node.needs?.includes(n) ?? false
+                    const need = node.needs?.find((x) => edgeTarget(x) === n)
+                    const cond = need ? edgeCondition(need) : null
+                    // Click cycles: none -> success -> failure -> finished -> none
+                    const cycle = () => {
+                      const others = (node.needs ?? []).filter((x) => edgeTarget(x) !== n)
+                      if (!need) {
+                        updateNode(selectedNode!, { needs: [...others, { node: n, on: 'success' as const }] })
+                      } else if (cond === 'success') {
+                        updateNode(selectedNode!, { needs: [...others, { node: n, on: 'failure' as const }] })
+                      } else if (cond === 'failure') {
+                        updateNode(selectedNode!, { needs: [...others, { node: n, on: 'finished' as const }] })
+                      } else {
+                        updateNode(selectedNode!, { needs: others.length > 0 ? others : undefined })
+                      }
+                    }
+                    const condMeta =
+                      cond === 'failure'
+                        ? { icon: ' ✗', cls: 'bg-[var(--color-red)]/20 text-[var(--color-red)]', title: t('flows.condFailure') }
+                        : cond === 'finished'
+                          ? { icon: ' •', cls: 'bg-[var(--color-hover)] text-[var(--color-text)]', title: t('flows.condFinished') }
+                          : { icon: ' ✓', cls: 'bg-[var(--color-blue)] text-[var(--color-bg)]', title: t('flows.condSuccess') }
                     return (
                       <button
                         key={n}
                         type="button"
-                        onClick={() => {
-                          const needs = active
-                            ? (node.needs ?? []).filter((d) => d !== n)
-                            : [...(node.needs ?? []), n]
-                          updateNode(selectedNode!, { needs: needs.length > 0 ? needs : undefined })
-                        }}
+                        onClick={cycle}
+                        title={need ? condMeta.title : t('flows.condAdd')}
                         className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                          active
-                            ? 'bg-[var(--color-blue)] text-[var(--color-bg)]'
-                            : 'bg-[var(--color-hover)] text-[var(--color-text-dim)]'
+                          need ? condMeta.cls : 'bg-[var(--color-hover)] text-[var(--color-text-dim)]'
                         }`}
                       >
-                        {n}
+                        {n}{need ? condMeta.icon : ' +'}
                       </button>
                     )
                   })}

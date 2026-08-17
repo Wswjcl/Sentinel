@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, Workflow, Clock } from 'lucide-react'
+import { Plus, Trash2, Workflow, Clock, Copy } from 'lucide-react'
 import { useI18n } from '../../hooks/useI18n'
 import { useFlows } from '../../hooks/useFlows'
 import FlowDetail from './FlowDetail'
@@ -139,6 +139,15 @@ export default function FlowsPanel() {
     refresh()
   }
 
+  const cloneFlow = async (name: string) => {
+    try {
+      await window.api.cloneFlow(name)
+      refresh()
+    } catch (err) {
+      console.error('Clone failed:', err)
+    }
+  }
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -179,14 +188,24 @@ export default function FlowsPanel() {
                     <h3 className="text-sm font-semibold text-[var(--color-text-bright)] truncate">{f.config.name}</h3>
                     <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">{f.config.description || '-'}</p>
                   </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); void deleteFlow(f.config.name) }}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded text-[var(--color-text-dim)]
-                               hover:text-[var(--color-red)] transition-all"
-                    title={t('flows.delete')}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); void cloneFlow(f.config.name) }}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-[var(--color-text-dim)]
+                                 hover:text-[var(--color-blue)] transition-all"
+                      title={t('flows.clone')}
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); void deleteFlow(f.config.name) }}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-[var(--color-text-dim)]
+                                 hover:text-[var(--color-red)] transition-all"
+                      title={t('flows.delete')}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3 mt-3 text-xs text-[var(--color-text-dim)]">
                   <span>{t('flows.nodeCount', { count: nodeCount })}</span>

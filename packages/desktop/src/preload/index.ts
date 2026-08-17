@@ -29,7 +29,8 @@ const api: ExposedAPI = {
   getFlow: (name) => ipcRenderer.invoke(IPC.FLOWS_GET, name),
   saveFlow: (name, config: FlowConfig) => ipcRenderer.invoke(IPC.FLOWS_SAVE, name, config),
   deleteFlow: (name) => ipcRenderer.invoke(IPC.FLOWS_DELETE, name),
-  runFlow: (name, inputs) => ipcRenderer.invoke(IPC.FLOWS_RUN, name, inputs),
+  runFlow: (name, inputs, resumeRunId) => ipcRenderer.invoke(IPC.FLOWS_RUN, name, inputs, resumeRunId),
+  cloneFlow: (name, newName) => ipcRenderer.invoke(IPC.FLOWS_CLONE, name, newName),
   validateFlowConfig: (config) => ipcRenderer.invoke(IPC.FLOWS_VALIDATE, config),
 
   // ── Scheduler ──

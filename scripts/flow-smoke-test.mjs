@@ -142,6 +142,88 @@ const store = new FlowStore({ flowsDir })
 const runs = await store.getRuns('parallel-flow')
 check('T7 runs persisted', runs.length === 1 && runs[0].status === 'success', `runs=${runs.length}`)
 
+// ── Test 8: conditional edges - failure branch triggers, success branch skipped ──
+await writeFlow('cond-flow', `
+name: cond-flow
+version: 1
+nodes:
+  risky:
+    type: script
+    run: "exit 1"
+  report:
+    type: script
+    run: "echo reported"
+    needs: [{ node: risky, on: success }]
+  alert:
+    type: script
+    run: "echo alerted"
+    needs: [{ node: risky, on: failure }]
+  cleanup:
+    type: script
+    run: "echo cleaned"
+    needs: [{ node: risky, on: finished }]
+`)
+const r8 = await engine.run('cond-flow')
+check('T8 failure branch ran', r8.nodes.alert.status === 'success', JSON.stringify(r8.nodes.alert))
+check('T8 finished branch ran', r8.nodes.cleanup.status === 'success')
+check('T8 success branch skipped', r8.nodes.report.status === 'skipped', JSON.stringify(r8.nodes.report))
+check('T8 flow partial (failed + branches completed)', r8.status === 'partial', `status=${r8.status}`)
+
+// ── Test 9: budget guard - maxTotalSeconds 0 blocks everything ──
+await writeFlow('budget-flow', `
+name: budget-flow
+version: 1
+maxTotalSeconds: 0
+nodes:
+  a:
+    type: script
+    run: "echo a"
+`)
+const r9 = await engine.run('budget-flow')
+check('T9 node budget-exhausted', r9.nodes.a.status === 'skipped' && r9.nodes.a.skipReason === 'budget-exhausted', JSON.stringify(r9.nodes.a))
+check('T9 flow failed on budget', r9.status === 'failed', `status=${r9.status}`)
+
+// ── Test 10: resume reuses successful nodes ──
+await writeFlow('resume-flow', `
+name: resume-flow
+version: 1
+nodes:
+  a:
+    type: script
+    run: "echo marker-42"
+  b:
+    type: script
+    run: "exit 3"
+`)
+const r10a = await engine.run('resume-flow')
+check('T10 first run: a ok, b failed', r10a.nodes.a.status === 'success' && r10a.nodes.b.status === 'failed')
+// Fix node b, then resume from the failed run
+const cfgPath = join(flowsDir, 'resume-flow', 'flow.yaml')
+await fs.writeFile(cfgPath, (await fs.readFile(cfgPath, 'utf-8')).replace('exit 3', 'echo fixed'), 'utf-8')
+const r10b = await engine.run('resume-flow', { resumeFromRunId: r10a.id })
+check('T10 resumed flag set', r10b.resumedFrom === r10a.id)
+check('T10 a reused (same finishedAt)', r10b.nodes.a.finishedAt === r10a.nodes.a.finishedAt, `${r10b.nodes.a.finishedAt} vs ${r10a.nodes.a.finishedAt}`)
+check('T10 b re-ran and succeeded', r10b.nodes.b.status === 'success', JSON.stringify(r10b.nodes.b))
+check('T10 resumed flow success', r10b.status === 'success', `status=${r10b.status}`)
+
+// ── Test 11: cloneFlow - template instantiation ──
+await writeFlow('template-flow', `
+name: template-flow
+version: 1
+nodes:
+  a:
+    type: script
+    run: "echo hi-{inputs.who}"
+`)
+await engine.run('template-flow', { inputs: { who: 'orig' } })
+await store.cloneFlow('template-flow', 'template-flow-2')
+const cloned = await store.getConfig('template-flow-2')
+const clonedRuns = await store.getRuns('template-flow-2')
+check('T11 clone renamed', cloned.name === 'template-flow-2' && Object.keys(cloned.nodes).length === 1)
+check('T11 clone has no run history', clonedRuns.length === 0, `runs=${clonedRuns.length}`)
+const r11 = await engine.run('template-flow-2', { inputs: { who: 'clone' } })
+check('T11 cloned flow runs with its own inputs', (r11.nodes.a.output ?? '').includes('hi-clone'), r11.nodes.a.output)
+
 // cleanup
 await fs.rm(tmp, { recursive: true, force: true })
 console.log(failures === 0 ? '\n=== ALL SMOKE TESTS PASSED ===' : `\n=== ${failures} TEST(S) FAILED ===`)

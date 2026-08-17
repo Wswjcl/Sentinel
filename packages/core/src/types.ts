@@ -107,16 +107,31 @@ export interface TaskInfo {
 
 export type FlowNodeType = 'ai' | 'script' | 'manual'
 
+export type FlowEdgeCondition = 'success' | 'failure' | 'finished'
+
+/** A dependency edge. Plain strings in `needs` remain supported and are
+ *  equivalent to { node, on: 'success' }. */
+export interface FlowEdge {
+  node: string
+  /** When the downstream node may run based on this upstream's result:
+   *  'success' (default), 'failure' (compensation branch), or
+   *  'finished' (regardless of outcome). */
+  on?: FlowEdgeCondition
+}
+
 export interface FlowNodeBase {
   /** Node type: 'ai' (OpenCode task), 'script' (shell command),
    *  'manual' (human gate, optionally taken over by the AI). */
   type: FlowNodeType
-  /** Upstream node names - DAG edges. Nodes without dependency
+  /** Upstream edges - DAG dependencies. Nodes without dependency
    *  relations run in parallel automatically. */
-  needs?: string[]
+  needs?: (string | FlowEdge)[]
   /** Failure policy: 'stop' (default, downstream nodes are skipped)
-   *  or 'continue' (downstream nodes still run). */
+   *  or 'continue' (downstream nodes still run). Superseded by
+   *  conditional edges ({ node, on: ... }) but kept for compatibility. */
   onFailure?: 'stop' | 'continue'
+  /** Optional canvas position (persisted layout; auto-layout when absent). */
+  position?: { x: number; y: number }
 }
 
 export interface AIFlowNode extends FlowNodeBase {
@@ -161,6 +176,9 @@ export interface FlowConfig {
   schedule?: TaskSchedule
   /** Max nodes running in parallel (default: engine concurrency). */
   concurrency?: number
+  /** Wall-clock budget for the whole flow in seconds. When exceeded, no
+   *  further nodes start and remaining nodes are skipped. */
+  maxTotalSeconds?: number
   nodes: Record<string, FlowNode>
 }
 
@@ -176,7 +194,7 @@ export interface FlowNodeRun {
   output?: string
   error?: string
   /** Why a skipped node was skipped. */
-  skipReason?: 'upstream-failure' | 'manual-gate' | 'unreachable'
+  skipReason?: 'upstream-failure' | 'branch-not-taken' | 'manual-gate' | 'unreachable' | 'budget-exhausted'
   /** For ai nodes: the id of the task run record produced. */
   taskRecordId?: string
   /** Whether the AI took over a manual node. */
@@ -192,4 +210,6 @@ export interface FlowRun {
   nodes: Record<string, FlowNodeRun>
   /** Inputs injected at run start ({inputs.key} placeholders). */
   inputs?: Record<string, string>
+  /** The run this run resumed from (successful nodes' outputs reused). */
+  resumedFrom?: string
 }
