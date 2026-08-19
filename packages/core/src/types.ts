@@ -10,6 +10,13 @@ export interface TaskExecution {
   agent?: string
   skills?: string[]
   timeout?: number
+  /** Session continuity across runs (R2):
+   *  - 'fresh' (default): every run starts a brand-new session
+   *  - 'continue': resume the last run's session (--session), the agent
+   *    sees the full conversation history and appends to it
+   *  - 'fork': branch off the last run's session (--session --fork),
+   *    history is inherited but the original session stays untouched */
+  session?: 'fresh' | 'continue' | 'fork'
   retry?: {
     max: number
     delay: number

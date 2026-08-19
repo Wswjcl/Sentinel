@@ -43,6 +43,9 @@ export interface ExecutorOptions {
   /** Override the execution prompt (used by Agent Loop for fix iterations).
    *  When provided, this replaces config.execution.prompt in the CLI args. */
   promptOverride?: string
+  /** Session continuity: continue or fork an existing OpenCode session
+   *  instead of starting a fresh one. */
+  continueSession?: { sessionId: string; fork: boolean }
 }
 
 export interface ExecutionResult {
@@ -95,6 +98,10 @@ export async function executeTask(
 
   if (exec.model) args.push('--model', exec.model)
   if (exec.agent) args.push('--agent', exec.agent)
+  if (options.continueSession) {
+    args.push('--session', options.continueSession.sessionId)
+    if (options.continueSession.fork) args.push('--fork')
+  }
 
   args.push(effectivePrompt)
 

@@ -239,6 +239,7 @@ function registerIpcHandlers(): void {
         model: opts.execution?.model || undefined,
         agent: opts.execution?.agent || 'default',
         timeout: opts.execution?.timeout || 600,
+        session: opts.execution?.session,
         retry: {
           max: opts.execution?.retry?.max ?? 2,
           delay: opts.execution?.retry?.delay ?? 60,
@@ -328,6 +329,7 @@ function registerIpcHandlers(): void {
       if (opts.execution.model !== undefined) existing.execution.model = opts.execution.model || undefined
       if (opts.execution.agent !== undefined) existing.execution.agent = opts.execution.agent
       if (opts.execution.timeout !== undefined) existing.execution.timeout = opts.execution.timeout
+      if (opts.execution.session !== undefined) existing.execution.session = opts.execution.session
       if (opts.execution.retry !== undefined) {
         existing.execution.retry = {
           max: opts.execution.retry.max ?? existing.execution.retry?.max ?? 2,

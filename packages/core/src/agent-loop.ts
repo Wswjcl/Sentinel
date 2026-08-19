@@ -10,6 +10,11 @@ export interface AgentLoopOptions {
   taskDir: string
   config: TaskConfig
   opencodeBin?: string
+  /** Session continuity for iteration 0, resolved by the runner from the
+   *  task's run history (execution.session mode). Fix iterations always
+   *  fork from the previous iteration's session so the agent remembers
+   *  what it already tried. */
+  initialContinueSession?: { sessionId: string; fork: boolean }
   /** Logger callback (reuses scheduler's logger) */
   onLog?: (level: string, msg: string) => void
   /** Called after each iteration's record is finalized. Use to persist
@@ -75,6 +80,7 @@ export async function runAgentLoop(
     onLog,
     onIterationComplete,
     onNotifyIterationFailed,
+    initialContinueSession,
   } = options
   const loopConfig = config.agentLoop
   if (!loopConfig) {
@@ -87,6 +93,7 @@ export async function runAgentLoop(
 
   let currentPrompt = config.execution.prompt
   let lastOutput = ''
+  let continueSession = initialContinueSession
   const allRecords: TaskRunRecord[] = []
 
   onLog?.('info', `Agent Loop started (max ${maxIterations} iterations)`)
@@ -112,7 +119,14 @@ export async function runAgentLoop(
       config,
       opencodeBin,
       promptOverride: currentPrompt,
+      continueSession,
     })
+    // Fix iterations fork from this run's session: the agent keeps its
+    // context of what was already attempted, while the audit trail of
+    // each iteration stays a separate session.
+    if (result.record.sessionId) {
+      continueSession = { sessionId: result.record.sessionId, fork: true }
+    }
 
     // Clean digest (assistant text + tool trace) - raw stdout is a JSON
     // event blob and makes poor prompt material.

@@ -23,6 +23,7 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
   const [model, setModel] = useState('')
   const [agent, setAgent] = useState('build')
   const [skills, setSkills] = useState('')
+  const [sessionMode, setSessionMode] = useState<'fresh' | 'continue' | 'fork'>('fresh')
   const [projectDir, setProjectDir] = useState('')
   const [allowTools, setAllowTools] = useState<string[]>(AVAILABLE_TOOLS)
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -81,6 +82,7 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
           model: model.trim() || undefined,
           agent: agent !== 'build' ? agent : undefined,
           skills: skillList,
+          session: sessionMode !== 'fresh' ? sessionMode : undefined,
         },
         skills: skillList,
         allowTools: allowTools.length < AVAILABLE_TOOLS.length ? allowTools : undefined,
@@ -287,6 +289,24 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
                          px-3 py-1.5 text-sm text-[var(--color-text)] placeholder-[var(--color-text-dim)]
                          focus:outline-none focus:border-[var(--color-blue)] transition-colors"
             />
+          </div>
+
+          {/* Session continuity */}
+          <div>
+            <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
+              {t('create.session')}
+            </label>
+            <select
+              value={sessionMode}
+              onChange={(e) => setSessionMode(e.target.value as 'fresh' | 'continue' | 'fork')}
+              className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
+                         px-3 py-1.5 text-sm text-[var(--color-text)]
+                         focus:outline-none focus:border-[var(--color-blue)] transition-colors"
+            >
+              <option value="fresh">{t('create.sessionFresh')}</option>
+              <option value="continue">{t('create.sessionContinue')}</option>
+              <option value="fork">{t('create.sessionFork')}</option>
+            </select>
           </div>
 
           {/* Advanced toggle */}

@@ -4,7 +4,7 @@ import { runAgentLoop } from './agent-loop.js'
 import { sentinelEvents } from './events.js'
 import { Notifier } from './notifier.js'
 import type { TaskStore } from './task-store.js'
-import type { TaskInfo, TaskRunRecord, TaskStatus } from './types.js'
+import type { TaskInfo, TaskExecution, TaskRunRecord, TaskStatus } from './types.js'
 import type { AgentLoopResult } from './agent-loop.js'
 
 // ─── Runner Options ─────────────────────────────────────────
@@ -18,6 +18,23 @@ export interface TaskRunnerOptions {
 }
 
 // ─── Runner Result ──────────────────────────────────────────
+
+/**
+ * Resolve the session-continuity argument for executeTask based on
+ * execution.session mode and the most recent session id in history.
+ * Returns undefined for 'fresh' (or when no prior session exists).
+ */
+export function resolveContinueSession(
+  mode: TaskExecution['session'],
+  history: TaskRunRecord[],
+): { sessionId: string; fork: boolean } | undefined {
+  if (mode !== 'continue' && mode !== 'fork') return undefined
+  for (let i = history.length - 1; i >= 0; i--) {
+    const sid = history[i].sessionId
+    if (sid) return { sessionId: sid, fork: mode === 'fork' }
+  }
+  return undefined
+}
 
 export interface TaskRunOutcome {
   /** Whether the task (or its agent loop) converged successfully */
@@ -62,6 +79,10 @@ export async function runTaskExecution(
         config,
         opencodeBin,
         onLog: log,
+        initialContinueSession: resolveContinueSession(
+          config.execution.session,
+          info.history,
+        ),
         // Persist each iteration as soon as it completes so a crash or
         // throw mid-loop doesn't lose records already paid for.
         onIterationComplete: async (record) => {
@@ -119,6 +140,9 @@ export async function runTaskExecution(
   const retryDelay = config.execution.retry?.delay ?? 60
   let lastRecord: TaskRunRecord | undefined
   let finalStatus: TaskStatus = 'failed'
+  // Session continuity: start from the last recorded session, then keep
+  // tracking the session each attempt actually used.
+  let continueSession = resolveContinueSession(config.execution.session, info.history)
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -126,8 +150,12 @@ export async function runTaskExecution(
         taskDir: info.dir,
         config,
         opencodeBin,
+        continueSession,
       })
       lastRecord = result.record
+      if (result.record.sessionId) {
+        continueSession = resolveContinueSession(config.execution.session, [result.record])
+      }
 
       // Record EVERY attempt in history (not just the last one)
       const history = await taskStore.getHistory(name)

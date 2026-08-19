@@ -71,6 +71,7 @@ export interface CreateTaskOpts {
     timeout?: number
     retry?: { max?: number; delay?: number }
     skills?: string[]
+    session?: 'fresh' | 'continue' | 'fork'
   }
   skills?: string[]
   externalDirs?: Array<{
