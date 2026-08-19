@@ -476,6 +476,8 @@ export class FlowEngine {
     if (result.record.status !== 'success') {
       throw new Error(result.record.error ?? `agent exited with code ${result.record.exitCode}`)
     }
-    return result.stdout
+    // Clean digest (assistant text + tool trace) - downstream prompt
+    // templates should not receive the raw JSON event blob.
+    return result.summary
   }
 }

@@ -430,6 +430,34 @@ function HistoryTab({ history }: { history: TaskRunRecord[] }) {
                 {t('detail.duration')} {Math.round(new Date(record.finishedAt).getTime() - new Date(record.startedAt).getTime()) / 1000}s
               </p>
             )}
+            {(record.steps !== undefined || record.tokens) && (
+              <p className="text-xs text-[var(--color-text-dim)] mt-1">
+                {t('detail.usage')}:{' '}
+                {record.steps !== undefined && <>{record.steps} steps</>}
+                {record.tokens && <>{record.steps !== undefined && ' · '}{record.tokens.total.toLocaleString()} tokens ({record.tokens.output.toLocaleString()} out)</>}
+                {record.cost ? <> · ${record.cost.toFixed(4)}</> : null}
+              </p>
+            )}
+            {record.toolCalls && record.toolCalls.length > 0 && (
+              <details className="mt-1">
+                <summary className="text-xs text-[var(--color-text-muted)] cursor-pointer select-none">
+                  {t('detail.toolCalls', { count: record.toolCalls.length })}
+                </summary>
+                <ul className="mt-1 space-y-0.5">
+                  {record.toolCalls.map((call, i) => (
+                    <li key={i} className="text-xs text-[var(--color-text-dim)] font-mono flex items-center gap-1.5">
+                      <span className={
+                        call.status === 'completed' ? 'text-[var(--color-green)]' :
+                        call.status === 'error' ? 'text-[var(--color-red)]' : ''
+                      }>●</span>
+                      {call.tool}
+                      {call.title && <span className="truncate max-w-[300px]">{call.title}</span>}
+                      {call.status !== 'completed' && <span>({call.status})</span>}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
         ))}
       </div>

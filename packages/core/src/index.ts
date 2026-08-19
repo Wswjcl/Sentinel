@@ -1,6 +1,7 @@
 export { TaskStore, isValidTaskName } from './task-store.js'
 export { Scheduler } from './scheduler.js'
 export { executeTask } from './executor.js'
+export { OpenCodeEventParser } from './opencode-events.js'
 export { getNextRun, shouldRunNow, isValidCron, parseInterval, shouldRunInterval, isValidSchedule } from './cron.js'
 export { generateOpenCodeConfig, generateSkillContent, OPENCODE_CONFIG_TEMPLATE } from './opencode-config.js'
 export { sentinelEvents } from './events.js'
@@ -20,6 +21,8 @@ export type {
   TaskStatus,
   TaskRunRecord,
   TaskInfo,
+  ToolCallRecord,
+  TokenUsage,
   AgentLoopConfig,
   LoopVerification,
   FlowNodeType,
@@ -44,5 +47,6 @@ export type {
 export type { SentinelEventMap } from './events.js'
 export type { AgentLoopOptions, AgentLoopResult } from './agent-loop.js'
 export type { VerificationOptions, VerificationResult } from './verification.js'
+export type { RunEventSummary } from './opencode-events.js'
 export type { TaskRunnerOptions, TaskRunOutcome } from './runner.js'
 export type { FlowValidationResult, FlowEngineOptions, FlowRunOptions } from './flow.js'

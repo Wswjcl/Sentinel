@@ -114,7 +114,9 @@ export async function runAgentLoop(
       promptOverride: currentPrompt,
     })
 
-    lastOutput = result.stdout
+    // Clean digest (assistant text + tool trace) - raw stdout is a JSON
+    // event blob and makes poor prompt material.
+    lastOutput = result.summary
 
     // ── 3. Verify ONLY if the execution itself succeeded (fail-closed).
     // A crashed execution must never be verified against stale state -
@@ -133,7 +135,7 @@ export async function runAgentLoop(
         criteria: loopConfig.verification.criteria,
         skill: loopConfig.verification.skill,
         taskDir,
-        output: result.stdout,
+        output: result.summary,
         opencodeBin,
         model: config.execution.model,
       })

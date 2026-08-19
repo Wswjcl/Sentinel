@@ -76,6 +76,20 @@ export type TaskStatus =
   | 'paused'
   | 'archived'
 
+export interface ToolCallRecord {
+  tool: string
+  title?: string
+  status: string
+  input?: unknown
+  output?: string
+}
+
+export interface TokenUsage {
+  input: number
+  output: number
+  total: number
+}
+
 export interface TaskRunRecord {
   id: string
   taskName: string
@@ -85,6 +99,17 @@ export interface TaskRunRecord {
   exitCode?: number
   error?: string
   output?: string
+  /** OpenCode session id (parsed from the JSON event stream) - enables
+   *  session continuity via --session on later runs */
+  sessionId?: string
+  /** Token usage summed across all agent steps */
+  tokens?: TokenUsage
+  /** Cost in USD summed across all agent steps */
+  cost?: number
+  /** Number of agent steps (LLM round-trips) */
+  steps?: number
+  /** Structured tool-call audit, in execution order (bounded) */
+  toolCalls?: ToolCallRecord[]
   /** Agent Loop: which iteration round (0 = first execution) */
   iteration?: number
   /** Agent Loop: whether verification passed for this iteration */

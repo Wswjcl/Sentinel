@@ -141,8 +141,11 @@ async function runLLMVerification(
       }
     }
 
-    // Parse the LLM response for pass/fail
-    const responseText = result.stdout.trim()
+    // Parse the LLM response for pass/fail.
+    // Use the clean assistant text - raw stdout is the JSON event stream,
+    // whose metadata (e.g. tool error statuses) would false-match the
+    // pass/fail regexes below.
+    const responseText = (result.record.output ?? '').trim()
 
     // Try to extract JSON from the response
     const jsonMatch = responseText.match(/\{[\s\S]*?"passed"[\s\S]*?\}/)
