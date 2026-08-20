@@ -147,4 +147,52 @@ export class OpenCodeEventParser {
       sawJsonEvents: this.jsonLines > 0,
     }
   }
+
+  /** Ingest a final message-parts array (from the serve HTTP API, which
+   *  uses the same part schema as the CLI event stream) and return its
+   *  summary. Does not mutate this parser instance. */
+  static summarizeParts(parts: unknown[]): RunEventSummary {
+    return OpenCodeEventParser.summarizePartArray(parts)
+  }
+
+  private static summarizePartArray(parts: unknown[]): RunEventSummary {
+    const summary: RunEventSummary = {
+      text: '',
+      tokens: { input: 0, output: 0, total: 0 },
+      cost: 0,
+      steps: 0,
+      toolCalls: [],
+      errors: [],
+      sawJsonEvents: true,
+    }
+    for (const raw of parts) {
+      const part = (raw ?? {}) as Record<string, unknown>
+      if (part.type === 'text' && typeof part.text === 'string') {
+        summary.text = (summary.text ? summary.text + '\n' : '') + part.text
+      } else if (part.type === 'tool') {
+        const state = (part.state ?? {}) as Record<string, unknown>
+        summary.toolCalls.push({
+          tool: typeof part.tool === 'string' ? part.tool : 'unknown',
+          title: typeof state.title === 'string' ? state.title : undefined,
+          status: typeof state.status === 'string' ? state.status : 'unknown',
+          input: state.input,
+          output: typeof state.output === 'string' ? state.output.slice(0, MAX_TOOL_OUTPUT_CHARS) : undefined,
+        })
+      } else if (part.type === 'step-finish') {
+        summary.steps++
+        const tokens = part.tokens as Record<string, unknown> | undefined
+        if (tokens) {
+          if (typeof tokens.input === 'number') summary.tokens.input += tokens.input
+          if (typeof tokens.output === 'number') summary.tokens.output += tokens.output
+          if (typeof tokens.total === 'number') summary.tokens.total += tokens.total
+        }
+        if (typeof part.cost === 'number') summary.cost += part.cost
+      }
+    }
+    summary.text = summary.text.trim()
+    if (summary.toolCalls.length > MAX_TOOL_CALLS) {
+      summary.toolCalls = summary.toolCalls.slice(-MAX_TOOL_CALLS)
+    }
+    return summary
+  }
 }

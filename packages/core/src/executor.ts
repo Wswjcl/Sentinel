@@ -12,7 +12,7 @@ import type { TaskConfig, TaskRunRecord } from './types.js'
  * prefer a `.exe` directly on PATH, otherwise parse the `.cmd` for the
  * embedded executable path (`%dp0%` = the shim's directory).
  */
-function resolveWindowsBinary(opencodeBin: string): string {
+export function resolveWindowsBinary(opencodeBin: string): string {
   const probe = spawnSync('where', [opencodeBin], { timeout: 5000, encoding: 'utf8' })
   if (probe.error || probe.status !== 0) return opencodeBin
   const lines = (probe.stdout ?? '')
