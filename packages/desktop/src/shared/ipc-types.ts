@@ -49,12 +49,20 @@ export const IPC = {
   APP_VERSION: 'app:version',
   APP_DATA: 'app:data',
 
-  // Real-time events (main → renderer)
+  // Serve runtime (R3)
+  RUNTIME_MODE_GET: 'runtime:mode:get',
+  RUNTIME_MODE_SET: 'runtime:mode:set',
+  TASK_PERMISSION_RESPOND: 'task:permission-respond',
+  TASK_ABORT: 'task:abort',
+
+  // Real-time events (main -> renderer)
   EVENT_TASK_UPDATE: 'event:task-update',
   EVENT_SCHEDULER_LOG: 'event:scheduler-log',
   EVENT_SCHEDULER_STATUS: 'event:scheduler-status',
   EVENT_LOOP_UPDATE: 'event:loop-update',
   EVENT_FLOW_UPDATE: 'event:flow-update',
+  EVENT_TASK_LIVE: 'event:task-live',
+  EVENT_TASK_PERMISSION: 'event:task-permission',
 } as const
 
 // ─── Request / Response Types ──────────────────────────────────────
@@ -126,7 +134,27 @@ export type FlowEventData =
   | { event: 'node-status-changed'; name: string; runId: string; node: string; status: FlowNodeStatus }
   | { event: 'completed'; name: string; runId: string; success: boolean }
 
-// ─── Exposed API (preload → renderer) ──────────────────────────────
+// ─── Serve runtime (R3) ─────────────────────────────────────────────
+
+export type RuntimeMode = 'cli' | 'serve'
+
+export interface PermissionAskData {
+  id: string
+  sessionId: string
+  permission: string
+  patterns: string[]
+  metadata: Record<string, unknown>
+  always: string[]
+}
+
+export type LiveEventData =
+  | { kind: 'text'; text: string }
+  | { kind: 'reasoning'; text: string }
+  | { kind: 'tool-start'; tool: string; title?: string }
+  | { kind: 'tool-finish'; tool: string; title?: string; status: string }
+  | { kind: 'status'; status: string }
+
+// ─── Exposed API (preload -> renderer) ──────────────────────────────
 
 export interface ExposedAPI {
   // Tasks — request/response
@@ -172,10 +200,18 @@ export interface ExposedAPI {
   getAppVersion(): Promise<string>
   getAppDataDir(): Promise<string>
 
+  // Serve runtime
+  getRuntimeMode(): Promise<RuntimeMode>
+  setRuntimeMode(mode: RuntimeMode): Promise<{ ok: boolean }>
+  respondTaskPermission(permissionId: string, response: 'once' | 'always' | 'reject'): Promise<{ ok: boolean }>
+  abortTask(name: string): Promise<{ ok: boolean }>
+
   // Real-time events (return cleanup function)
   onTaskUpdate(callback: (data: { name: string; status: TaskStatus }) => void): () => void
   onSchedulerLog(callback: (data: { level: string; msg: string; ts?: number }) => void): () => void
   onSchedulerStatus(callback: (data: { running: boolean }) => void): () => void
   onLoopUpdate(callback: (data: LoopEventData) => void): () => void
   onFlowUpdate(callback: (data: FlowEventData) => void): () => void
+  onTaskLiveEvent(callback: (data: { name: string; event: LiveEventData }) => void): () => void
+  onTaskPermission(callback: (data: { name: string; request: PermissionAskData }) => void): () => void
 }

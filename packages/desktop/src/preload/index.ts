@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { TaskStatus, FlowConfig } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
-import type { ExposedAPI, LoopEventData, FlowEventData } from '../shared/ipc-types'
+import type { ExposedAPI, LoopEventData, FlowEventData, RuntimeMode, LiveEventData, PermissionAskData } from '../shared/ipc-types'
 
 const api: ExposedAPI = {
   // ── Tasks ──
@@ -47,6 +47,12 @@ const api: ExposedAPI = {
   getAppVersion: () => ipcRenderer.invoke(IPC.APP_VERSION),
   getAppDataDir: () => ipcRenderer.invoke(IPC.APP_DATA),
 
+  // ── Serve runtime ──
+  getRuntimeMode: () => ipcRenderer.invoke(IPC.RUNTIME_MODE_GET),
+  setRuntimeMode: (mode) => ipcRenderer.invoke(IPC.RUNTIME_MODE_SET, mode),
+  respondTaskPermission: (permissionId, response) => ipcRenderer.invoke(IPC.TASK_PERMISSION_RESPOND, permissionId, response),
+  abortTask: (name) => ipcRenderer.invoke(IPC.TASK_ABORT, name),
+
   // ── Real-time events ──
   onTaskUpdate: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, data: { name: string; status: TaskStatus }) => callback(data)
@@ -76,6 +82,18 @@ const api: ExposedAPI = {
     const handler = (_event: Electron.IpcRendererEvent, data: FlowEventData) => callback(data)
     ipcRenderer.on(IPC.EVENT_FLOW_UPDATE, handler)
     return () => ipcRenderer.removeListener(IPC.EVENT_FLOW_UPDATE, handler)
+  },
+
+  onTaskLiveEvent: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { name: string; event: LiveEventData }) => callback(data)
+    ipcRenderer.on(IPC.EVENT_TASK_LIVE, handler)
+    return () => ipcRenderer.removeListener(IPC.EVENT_TASK_LIVE, handler)
+  },
+
+  onTaskPermission: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { name: string; request: PermissionAskData }) => callback(data)
+    ipcRenderer.on(IPC.EVENT_TASK_PERMISSION, handler)
+    return () => ipcRenderer.removeListener(IPC.EVENT_TASK_PERMISSION, handler)
   },
 }
 

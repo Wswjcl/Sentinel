@@ -2,10 +2,10 @@ import { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage } from 'ele
 import { promises as fs } from 'node:fs'
 import { join, resolve, dirname } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, validateFlow, isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
-import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig } from '@sentinel/core'
+import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
+import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionRequest, PermissionResponse } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
-import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData } from '../shared/ipc-types'
+import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, PermissionAskData, LiveEventData } from '../shared/ipc-types'
 
 // ─── Globals ───────────────────────────────────────────────────────
 
@@ -58,6 +58,82 @@ const TASKS_DIR = join(DATA_DIR, 'tasks')
 const FLOWS_DIR = join(DATA_DIR, 'flows')
 const store = new TaskStore({ tasksDir: TASKS_DIR })
 const flowStore = new FlowStore({ flowsDir: FLOWS_DIR })
+
+// ─── Serve runtime (R3) ────────────────────────────────────────────
+// Manual runs can execute through a shared `opencode serve` process:
+// live events stream to the renderer, permission asks become dialogs,
+// and the user can abort a run mid-flight. Scheduled/unattended runs
+// always use the plain CLI path (auto-deny permissions).
+
+const RUNTIME_FILE = join(DATA_DIR, 'runtime.json')
+let runtimeMode: RuntimeMode = 'cli'
+let serveServer: OpenCodeServer | null = null
+/** Pending permission dialogs: permissionId -> resolve(response) */
+const permissionWaiters = new Map<string, (response: PermissionResponse) => void>()
+/** Abort controllers of in-flight serve runs, by task name */
+const taskAbortControllers = new Map<string, AbortController>()
+
+async function loadRuntimeMode(): Promise<void> {
+  try {
+    const raw = JSON.parse(await fs.readFile(RUNTIME_FILE, 'utf8'))
+    if (raw.mode === 'serve' || raw.mode === 'cli') runtimeMode = raw.mode
+  } catch {}
+}
+
+async function saveRuntimeMode(mode: RuntimeMode): Promise<void> {
+  runtimeMode = mode
+  try {
+    await fs.writeFile(RUNTIME_FILE, JSON.stringify({ mode }, null, 2))
+  } catch {}
+}
+
+async function getServeServer(): Promise<OpenCodeServer> {
+  if (!serveServer) {
+    serveServer = await OpenCodeServer.start({
+      onLog: (level, msg) => {
+        sentinelEvents.emit('scheduler:log', { level, msg: `[serve] ${msg}` })
+      },
+    })
+  }
+  return serveServer
+}
+
+/** Build the executor override that routes one task run through serve. */
+function buildServeOverride(
+  name: string,
+  server: OpenCodeServer,
+  abortController: AbortController,
+): (options: import('@sentinel/core').ExecutorOptions) => Promise<import('@sentinel/core').ExecutionResult> {
+  return (options) =>
+    server.runTask({
+      taskDir: options.taskDir,
+      config: options.config,
+      promptOverride: options.promptOverride,
+      continueSession: options.continueSession,
+      abortSignal: abortController.signal,
+      onEvent: (event) => {
+        mainWindow?.webContents.send(IPC.EVENT_TASK_LIVE, {
+          name,
+          event: event.kind === 'permission' ? { kind: 'status', status: 'permission-asked' } : event,
+        })
+      },
+      onPermission: (request) =>
+        new Promise<PermissionResponse>((resolve) => {
+          permissionWaiters.set(request.id, resolve)
+          const ask: PermissionAskData = {
+            id: request.id,
+            sessionId: request.sessionId,
+            permission: request.permission,
+            patterns: request.patterns,
+            metadata: request.metadata,
+            always: request.always,
+          }
+          mainWindow?.webContents.send(IPC.EVENT_TASK_PERMISSION, { name, request: ask })
+          // Core denies after its own timeout; this cleanup just drops the waiter.
+          setTimeout(() => permissionWaiters.delete(request.id), 130_000)
+        }),
+    })
+}
 const flowEngine = new FlowEngine({
   flowStore,
   taskStore: store,
@@ -362,6 +438,26 @@ function registerIpcHandlers(): void {
     await store.setStatus(name, 'running')
     sentinelEvents.emit('task:status-changed', { name, status: 'running' })
 
+    // In serve mode, execute through the shared opencode server: live
+    // events, permission dialogs, abortable. Scheduled runs always use
+    // the plain CLI path.
+    let executeOverride:
+      | ((options: import('@sentinel/core').ExecutorOptions) => Promise<import('@sentinel/core').ExecutionResult>)
+      | undefined
+    if (runtimeMode === 'serve') {
+      try {
+        const server = await getServeServer()
+        const abortController = new AbortController()
+        taskAbortControllers.set(name, abortController)
+        executeOverride = buildServeOverride(name, server, abortController)
+      } catch (err) {
+        sentinelEvents.emit('scheduler:log', {
+          level: 'error',
+          msg: `Task ${name}: serve runtime unavailable (${String(err)}), falling back to CLI`,
+        })
+      }
+    }
+
     // Run asynchronously - don't await completion. Uses the shared runner
     // so manual runs behave exactly like scheduled runs (agent loop,
     // retries, history persistence, notifications).
@@ -369,15 +465,45 @@ function registerIpcHandlers(): void {
       taskStore: store,
       name,
       info,
+      executeOverride,
       onLog: (level, msg) => {
         // Logs are forwarded to the renderer via the scheduler:log event
         sentinelEvents.emit('scheduler:log', { level, msg })
       },
-    }).catch((err) => {
-      sentinelEvents.emit('scheduler:log', { level: 'error', msg: `Task ${name} error: ${String(err)}` })
     })
+      .catch((err) => {
+        sentinelEvents.emit('scheduler:log', { level: 'error', msg: `Task ${name} error: ${String(err)}` })
+      })
+      .finally(() => {
+        taskAbortControllers.delete(name)
+      })
 
     return { ok: true, status: 'running' }
+  })
+
+  ipcMain.handle(IPC.RUNTIME_MODE_GET, () => runtimeMode)
+  ipcMain.handle(IPC.RUNTIME_MODE_SET, async (_e, mode: RuntimeMode) => {
+    await saveRuntimeMode(mode)
+    return { ok: true }
+  })
+
+  ipcMain.handle(IPC.TASK_PERMISSION_RESPOND, (_e, permissionId: string, response: PermissionResponse) => {
+    const waiter = permissionWaiters.get(permissionId)
+    if (waiter) {
+      permissionWaiters.delete(permissionId)
+      waiter(response)
+      return { ok: true }
+    }
+    return { ok: false }
+  })
+
+  ipcMain.handle(IPC.TASK_ABORT, (_e, name: string) => {
+    const controller = taskAbortControllers.get(name)
+    if (controller) {
+      controller.abort()
+      return { ok: true }
+    }
+    return { ok: false }
   })
 
   ipcMain.handle(IPC.TASKS_HISTORY, async (_e, name: string) => {
@@ -788,6 +914,7 @@ app.whenReady().then(async () => {
   })
 
   await migrateLegacyData()
+  await loadRuntimeMode()
   await store.init()
   await flowStore.init()
   setupMenu()

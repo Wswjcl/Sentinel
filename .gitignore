@@ -4,3 +4,13 @@ dist/
 tasks/*/output/
 .history.json
 packages/desktop/data/
+
+# stray in-place tsc output (never commit compiled artifacts in src)
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
+packages/desktop/*.js
+packages/desktop/*.js.map
+packages/desktop/*.d.ts
+!packages/desktop/src/renderer/src/env.d.ts

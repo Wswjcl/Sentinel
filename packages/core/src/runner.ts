@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { executeTask } from './executor.js'
+import type { ExecutorOptions, ExecutionResult } from './executor.js'
 import { runAgentLoop } from './agent-loop.js'
 import { sentinelEvents } from './events.js'
 import { Notifier } from './notifier.js'
@@ -15,6 +16,10 @@ export interface TaskRunnerOptions {
   info: TaskInfo
   opencodeBin?: string
   onLog?: (level: string, msg: string) => void
+  /** Replace the CLI executor (e.g. the desktop app routes execution
+   *  through the opencode serve runtime for live view / permission
+   *  dialogs / abort). Receives the same options executeTask would. */
+  executeOverride?: (options: ExecutorOptions) => Promise<ExecutionResult>
 }
 
 // ─── Runner Result ──────────────────────────────────────────
@@ -65,8 +70,9 @@ export interface TaskRunOutcome {
 export async function runTaskExecution(
   options: TaskRunnerOptions,
 ): Promise<TaskRunOutcome> {
-  const { taskStore, name, info, opencodeBin = 'opencode', onLog } = options
+  const { taskStore, name, info, opencodeBin = 'opencode', onLog, executeOverride } = options
   const { config } = info
+  const execute = executeOverride ?? executeTask
 
   const log = (level: string, msg: string): void => onLog?.(level, msg)
   const notifier = new Notifier({ onLog: (level, msg) => log(level, msg) })
@@ -79,6 +85,7 @@ export async function runTaskExecution(
         config,
         opencodeBin,
         onLog: log,
+        executeOverride,
         initialContinueSession: resolveContinueSession(
           config.execution.session,
           info.history,
@@ -146,7 +153,7 @@ export async function runTaskExecution(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const result = await executeTask({
+      const result = await execute({
         taskDir: info.dir,
         config,
         opencodeBin,

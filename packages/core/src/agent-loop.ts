@@ -1,4 +1,5 @@
 import { executeTask } from './executor.js'
+import type { ExecutorOptions, ExecutionResult } from './executor.js'
 import { runVerification } from './verification.js'
 import { sentinelEvents } from './events.js'
 import type { TaskConfig, TaskRunRecord } from './types.js'
@@ -17,6 +18,8 @@ export interface AgentLoopOptions {
   initialContinueSession?: { sessionId: string; fork: boolean }
   /** Logger callback (reuses scheduler's logger) */
   onLog?: (level: string, msg: string) => void
+  /** Replace the CLI executor (desktop serve runtime). */
+  executeOverride?: (options: ExecutorOptions) => Promise<ExecutionResult>
   /** Called after each iteration's record is finalized. Use to persist
    *  records incrementally so a crash mid-loop doesn't lose completed
    *  iterations. */
@@ -81,7 +84,9 @@ export async function runAgentLoop(
     onIterationComplete,
     onNotifyIterationFailed,
     initialContinueSession,
+    executeOverride,
   } = options
+  const execute = executeOverride ?? executeTask
   const loopConfig = config.agentLoop
   if (!loopConfig) {
     throw new Error('runAgentLoop: config.agentLoop is required (set agentLoop.enabled: true)')
@@ -114,7 +119,7 @@ export async function runAgentLoop(
     onLog?.('info', `Loop iteration ${iteration + 1}/${maxIterations}`)
 
     // ── 2. Execute OpenCode with current prompt ──
-    const result = await executeTask({
+    const result = await execute({
       taskDir,
       config,
       opencodeBin,

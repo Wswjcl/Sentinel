@@ -1,18 +1,26 @@
 import { useState, useEffect } from 'react'
-import { FolderOpen, Sun, Moon } from 'lucide-react'
+import { FolderOpen, Sun, Moon, Zap, Terminal } from 'lucide-react'
 import { useTheme, type Theme } from '../../hooks/useTheme'
 import { useI18n, type Locale, LOCALE_LABELS } from '../../hooks/useI18n'
+import type { RuntimeMode } from '../../../../shared/ipc-types'
 
 export default function SettingsPanel() {
   const { theme, setTheme } = useTheme()
   const { locale, setLocale, t } = useI18n()
   const [version, setVersion] = useState('')
   const [dataDir, setDataDir] = useState('')
+  const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>('cli')
 
   useEffect(() => {
     window.api.getAppVersion().then(setVersion).catch(() => setVersion('unknown'))
     window.api.getAppDataDir().then(setDataDir).catch(() => setDataDir(''))
+    window.api.getRuntimeMode().then(setRuntimeMode).catch(() => setRuntimeMode('cli'))
   }, [])
+
+  const changeRuntimeMode = async (mode: RuntimeMode) => {
+    setRuntimeMode(mode)
+    await window.api.setRuntimeMode(mode)
+  }
 
   return (
     <div className="p-6 max-w-2xl">
@@ -40,6 +48,40 @@ export default function SettingsPanel() {
               <div className="text-xs text-[var(--color-text-dim)]">{t('settings.runtimeDesc')}</div>
             </div>
             <span className="text-sm text-[var(--color-text-bright)] font-mono">{t('settings.desktop')}</span>
+          </div>
+
+          {/* Runtime mode selector */}
+          <div className="flex items-center justify-between px-4 py-3">
+            <div>
+              <div className="text-sm text-[var(--color-text)]">{t('detail.runtimeMode')}</div>
+              <div className="text-xs text-[var(--color-text-dim)]">
+                {runtimeMode === 'serve' ? t('detail.runtimeServe') : t('detail.runtimeCli')}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => changeRuntimeMode('cli')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  runtimeMode === 'cli'
+                    ? 'bg-[var(--color-blue)] text-white'
+                    : 'bg-[var(--color-hover)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                }`}
+              >
+                <Terminal className="w-3 h-3" />
+                CLI
+              </button>
+              <button
+                onClick={() => changeRuntimeMode('serve')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  runtimeMode === 'serve'
+                    ? 'bg-[var(--color-blue)] text-white'
+                    : 'bg-[var(--color-hover)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                }`}
+              >
+                <Zap className="w-3 h-3" />
+                Serve
+              </button>
+            </div>
           </div>
 
           {/* Theme selector */}

@@ -276,7 +276,9 @@ export class OpenCodeServer {
     if (ev.type === 'message.part.updated' || ev.type === 'message.part.delta') {
       const part = props.part as Record<string, unknown> | undefined
       if (ev.type === 'message.part.delta') {
-        const delta = (props.delta ?? part?.text) as string | undefined
+        // True deltas only - falling back to the full part text here would
+        // duplicate every line (the part.updated branch already emits it).
+        const delta = props.delta
         if (typeof delta === 'string' && delta) {
           sink({ kind: part?.type === 'reasoning' ? 'reasoning' : 'text', text: delta })
         }

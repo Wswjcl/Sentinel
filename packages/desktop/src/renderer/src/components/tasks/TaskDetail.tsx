@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { TaskInfo, TaskStatus, TaskRunRecord } from '@sentinel/core'
-import { ArrowLeft, Play, Pause, Trash2, RefreshCw, FolderOpen, FileText, Clock } from 'lucide-react'
+import { ArrowLeft, Play, Pause, Trash2, RefreshCw, FolderOpen, FileText, Clock, Radio, Square, ShieldAlert } from 'lucide-react'
 import { useI18n } from '../../hooks/useI18n'
-import type { TreeNode, OutputFile } from '../../../../shared/ipc-types'
+import type { TreeNode, OutputFile, PermissionAskData, LiveEventData } from '../../../../shared/ipc-types'
 
 interface TaskDetailProps {
   task: TaskInfo
   onBack: () => void
 }
 
-type Tab = 'overview' | 'workspace' | 'outputs' | 'history' | 'config'
+type Tab = 'overview' | 'workspace' | 'outputs' | 'history' | 'live' | 'config'
 
 const statusColor: Record<TaskStatus, string> = {
   pending: 'text-[var(--color-text-muted)]',
@@ -111,6 +111,7 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
     { id: 'workspace', label: t('detail.files'), icon: FolderOpen },
     { id: 'outputs', label: t('detail.outputs'), icon: FileText },
     { id: 'history', label: t('detail.history'), icon: Clock },
+    { id: 'live', label: t('detail.live'), icon: Radio },
     { id: 'config', label: t('detail.config'), icon: RefreshCw },
   ]
 
@@ -223,6 +224,7 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
           />
         )}
         {tab === 'history' && <HistoryTab history={task.history} />}
+        {tab === 'live' && <LiveTab task={task} />}
         {tab === 'config' && <ConfigTab task={task} onRefresh={refreshTask} />}
       </div>
     </div>
@@ -380,6 +382,127 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// ─── Live Tab (serve runtime) ──────────────────────────────────────
+
+interface LiveLine {
+  id: number
+  kind: 'text' | 'reasoning' | 'tool' | 'status'
+  text: string
+}
+
+function LiveTab({ task }: { task: TaskInfo }) {
+  const { t } = useI18n()
+  const [lines, setLines] = useState<LiveLine[]>([])
+  const [permission, setPermission] = useState<PermissionAskData | null>(null)
+  const name = task.config.name
+
+  useEffect(() => {
+    setLines([])
+    setPermission(null)
+    let seq = 0
+    const push = (kind: LiveLine['kind'], text: string) => {
+      setLines((prev) => [...prev, { id: seq++, kind, text }].slice(-500))
+    }
+    const unsubLive = window.api.onTaskLiveEvent(({ name: n, event }) => {
+      if (n !== name) return
+      if (event.kind === 'text') push('text', event.text)
+      else if (event.kind === 'reasoning') push('reasoning', event.text)
+      else if (event.kind === 'tool-start') push('tool', `▶ ${event.tool}${event.title ? `: ${event.title}` : ''}`)
+      else if (event.kind === 'tool-finish') push('tool', `${event.status === 'completed' ? '✓' : '✗'} ${event.tool} [${event.status}]`)
+      else if (event.kind === 'status') push('status', event.status)
+    })
+    const unsubPerm = window.api.onTaskPermission(({ name: n, request }) => {
+      if (n !== name) return
+      setPermission(request)
+    })
+    return () => {
+      unsubLive()
+      unsubPerm()
+    }
+  }, [name])
+
+  const respond = async (response: 'once' | 'always' | 'reject') => {
+    if (!permission) return
+    await window.api.respondTaskPermission(permission.id, response)
+    setPermission(null)
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
+          {t('detail.live')}
+        </h3>
+        {task.status === 'running' && (
+          <button
+            onClick={() => window.api.abortTask(name)}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium
+                       bg-[var(--color-red)] text-white hover:opacity-90 transition-opacity"
+          >
+            <Square className="w-3 h-3" />
+            {t('detail.stop')}
+          </button>
+        )}
+      </div>
+
+      {/* Permission approval dialog */}
+      {permission && (
+        <div className="mb-3 rounded-lg border border-[var(--color-yellow)] bg-[var(--color-card)] p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldAlert className="w-4 h-4 text-[var(--color-yellow)]" />
+            <span className="text-sm font-medium text-[var(--color-text)]">
+              {t('detail.permissionAsk', { tool: permission.permission })}
+            </span>
+          </div>
+          {permission.patterns.length > 0 && (
+            <pre className="text-xs text-[var(--color-text)] bg-[var(--color-hover)] rounded p-2 mb-2 whitespace-pre-wrap font-mono">
+              {permission.patterns.join('\n')}
+            </pre>
+          )}
+          <div className="flex gap-2">
+            <button onClick={() => respond('once')}
+              className="px-3 py-1 rounded text-xs font-medium bg-[var(--color-green)] text-white hover:opacity-90">
+              {t('detail.permissionOnce')}
+            </button>
+            <button onClick={() => respond('always')}
+              className="px-3 py-1 rounded text-xs font-medium bg-[var(--color-blue)] text-white hover:opacity-90">
+              {t('detail.permissionAlways')}
+            </button>
+            <button onClick={() => respond('reject')}
+              className="px-3 py-1 rounded text-xs font-medium bg-[var(--color-red)] text-white hover:opacity-90">
+              {t('detail.permissionReject')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Live stream */}
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-3 max-h-[50vh] overflow-y-auto">
+        {lines.length === 0 ? (
+          <p className="text-sm text-[var(--color-text-dim)]">{t('detail.liveEmpty')}</p>
+        ) : (
+          lines.map((line) => (
+            <div
+              key={line.id}
+              className={
+                line.kind === 'tool'
+                  ? 'text-xs text-[var(--color-blue)] font-mono'
+                  : line.kind === 'reasoning'
+                    ? 'text-xs text-[var(--color-text-dim)] italic'
+                    : line.kind === 'status'
+                      ? 'text-xs text-[var(--color-yellow)]'
+                      : 'text-sm text-[var(--color-text)] whitespace-pre-wrap'
+              }
+            >
+              {line.text}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ─── History Tab ───────────────────────────────────────────────────
