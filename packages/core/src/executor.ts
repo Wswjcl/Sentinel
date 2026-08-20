@@ -83,28 +83,6 @@ export async function executeTask(
   // Use promptOverride if provided (Agent Loop fix iterations), otherwise original prompt
   const effectivePrompt = promptOverride ?? exec.prompt
 
-  // Build args array - no shell expansion to prevent command injection.
-  // NOTE: no --skill flag - opencode loads skills automatically from the
-  // task workspace (.opencode/skills/). exec.skills only drives scaffolding
-  // at task-creation time.
-  const args: string[] = [
-    'run',
-    '--dir', taskDir,
-    // Auto-approves permissions that are not explicitly denied - the deny
-    // rules written into the task's .opencode config are still enforced.
-    '--dangerously-skip-permissions',
-    '--format', 'json',
-  ]
-
-  if (exec.model) args.push('--model', exec.model)
-  if (exec.agent) args.push('--agent', exec.agent)
-  if (options.continueSession) {
-    args.push('--session', options.continueSession.sessionId)
-    if (options.continueSession.fork) args.push('--fork')
-  }
-
-  args.push(effectivePrompt)
-
   const record: TaskRunRecord = {
     id: recordId,
     taskName: config.name,
@@ -112,7 +90,7 @@ export async function executeTask(
     status: 'running',
   }
 
-  // Pre-flight: check if opencode is available.
+  // Pre-flight: check if opencode is available and detect its version.
   // Args-array form only - never interpolate the user-configured binary
   // path into a shell command string (command injection).
   const resolvedBin =
@@ -130,6 +108,32 @@ export async function executeTask(
       summary: record.error,
     }
   }
+
+  // Auto-approve permissions that are not explicitly denied - the deny
+  // rules written into the task's .opencode config are still enforced.
+  // `--auto` is the documented flag since opencode 1.18; older versions
+  // only know the (now hidden) `--dangerously-skip-permissions` alias.
+  const version = (probe.stdout ?? '').toString().trim()
+  const majorMinor = /^(\d+)\.(\d+)/.exec(version)
+  const skipPermissionsFlag =
+    majorMinor && (Number(majorMinor[1]) > 1 || Number(majorMinor[2]) >= 18)
+      ? '--auto'
+      : '--dangerously-skip-permissions'
+  const args: string[] = [
+    'run',
+    '--dir', taskDir,
+    skipPermissionsFlag,
+    '--format', 'json',
+  ]
+
+  if (exec.model) args.push('--model', exec.model)
+  if (exec.agent) args.push('--agent', exec.agent)
+  if (options.continueSession) {
+    args.push('--session', options.continueSession.sessionId)
+    if (options.continueSession.fork) args.push('--fork')
+  }
+
+  args.push(effectivePrompt)
 
   return new Promise((resolve) => {
     let combinedOutput = ''
