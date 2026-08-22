@@ -33,6 +33,18 @@ function resolveDataDir(): string {
 const DATA_DIR = resolveDataDir()
 
 /**
+ * Resolve a runtime asset (window/tray icons) shipped in resources/:
+ * - packaged: electron-builder's extraResources copies them to
+ *   <install>/resources/, reachable via process.resourcesPath
+ * - dev: the source resources/ dir (out/main -> ../../resources)
+ */
+function resolveAsset(name: string): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, name)
+    : join(__dirname, '../../resources', name)
+}
+
+/**
  * One-time migration from the legacy ~/.sentinel layout: copies
  * tasks/flows into the data dir when they exist there but not yet in
  * the new location. Never overwrites existing data.
@@ -153,6 +165,7 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     frame: false,
+    icon: resolveAsset('icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -748,7 +761,10 @@ function registerIpcHandlers(): void {
 // ─── System Tray ────────────────────────────────────────────────────
 
 function createTray(): void {
-  const icon = nativeImage.createFromBuffer(createDefaultIcon())
+  // Prefer the real tray icon; fall back to the programmatic circle if the
+  // asset is somehow missing at runtime.
+  const image = nativeImage.createFromPath(resolveAsset('tray.png'))
+  const icon = image.isEmpty() ? nativeImage.createFromBuffer(createDefaultIcon()) : image
   tray = new Tray(icon)
   tray.setToolTip('Sentinel AI Scheduler')
 

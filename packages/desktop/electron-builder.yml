@@ -2,6 +2,13 @@ appId: com.sentinel.desktop
 productName: Sentinel
 directories:
   buildResources: resources
+# Runtime assets (window/tray icons) resolved via process.resourcesPath
+extraResources:
+  - from: resources
+    to: .
+    filter:
+      - icon.png
+      - tray.png
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -10,6 +17,7 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 win:
   executableName: sentinel
+  icon: resources/icon.ico
   target:
     - target: portable
       arch:
@@ -22,12 +30,14 @@ nsis:
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   notarize: false
+  icon: resources/icon.png
   target:
     - target: dmg
       arch:
         - x64
         - arm64
 linux:
+  icon: resources/icon.png
   target:
     - target: AppImage
       arch:
