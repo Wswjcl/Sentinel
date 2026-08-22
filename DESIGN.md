@@ -501,3 +501,114 @@ interface SentinelEventMap {
 | v2.2 | Loop Patterns | 内置 7 种标准 Loop Pattern（PR Babysitter、Daily Triage 等） |
 | v2.3 | Loop Audit | Loop Ready 评分系统，量化任务的 Loop 工程成熟度 |
 | v2.4 | Loop Cost | Token/成本追踪与预算控制 |
+
+---
+
+## Flow Engineering（v2.x 新增）
+
+将多个任务节点编排成 **DAG 工作流**：无依赖关系的节点自动并行执行（受最大并行度约束），支持条件分支、失败传播、运行预算与断点恢复。
+
+### 数据模型
+
+```typescript
+type FlowNodeType = 'ai' | 'script' | 'manual'
+
+interface FlowConfig {
+  name: string
+  version: number
+  nodes: Record<string, FlowNode>        // 节点表
+  maxParallel?: number                   // 并行度上限
+  maxTotalSeconds?: number               // 整个 Flow 的墙钟预算
+}
+
+// 条件边：字符串 = 普通依赖（上游失败则跳过下游）
+//          对象 = 显式条件（on: success | failure | finished）
+type FlowEdge = string | { node: string; on?: 'success' | 'failure' | 'finished' }
+```
+
+### 执行语义
+
+| 机制 | 说明 |
+|------|------|
+| 拓扑执行 | Kahn 算法做环检测 + 分层调度，入度为 0 的节点立即进入就绪队列 |
+| 条件边 | `on: success` 只有上游成功才走；`on: failure` 是失败分支（UI 红色虚线）；`on: finished` 无论成败都走 |
+| 跳过语义 | `upstream-failure`（普通边上游失败）与 `branch-not-taken`（条件分支未命中）区分——后者不算流程失败 |
+| 失败传播 | `onFailure: stop`（默认）阻断下游；`continue` 放行 |
+| 终态判定 | `blocked ? 'failed' : anyFailed ? 'partial' : 'success'`；预算耗尽 = failed |
+| 断点恢复 | `resumeFromRunId` 复用上次成功节点（保持 finishedAt 不变），只重跑失败/跳过部分 |
+| 克隆 | `cloneFlow` 复制整个 Flow 目录、清空运行历史、自动改名 |
+
+### 节点类型
+
+- **ai** — 引用已有任务工作区执行，支持 `{node.output}`（上游输出注入）与 `{inputs.key}`（运行时输入）占位符
+- **script** — 目录内 shell 命令，带超时与 cwd
+- **manual** — 人工门禁；未开启 `aiTakeover` 时自动跳过（skipReason: manual-gate），流程继续
+
+---
+
+## Agent Runtime（v3.0.0 新增）
+
+R1-R3 三步升级，把 opencode 从"批处理黑盒"变成可观测、有记忆、可干预的 Agent 运行时。
+
+### R1 结构化事件审计
+
+`opencode run --format json` 每行输出一个 JSON 事件（step_start / text / tool_use / step_finish / error）。`opencode-events.ts` 流式解析为结构化结果，写入 `TaskRunRecord`：
+
+```typescript
+interface TaskRunRecord {
+  sessionId?: string        // 会话 id（R2 连续性的锚点）
+  tokens?: { input; output; total }
+  cost?: number             // 美元成本（各 step 求和）
+  steps?: number            // LLM 往返次数
+  toolCalls?: ToolCallRecord[]  // 工具调用链（工具名/标题/状态/输入/输出，保留最近 50 条）
+}
+```
+
+关键决策：
+- **fail-closed**：出现 `error` 事件即判定失败，即使退出码为 0
+- **输出优先级**：助手文本 → 工具调用摘要 → 原始输出尾部（有些运行合法地无最终文本）
+- **Windows 二进制解析**：npm 安装的 opencode 是 `.cmd` shim，Node spawn 拒绝无 shell 执行 → 从 `where` 输出解析原生 `.exe`（优先直接命中，否则解析 shim 内容里的引号路径）
+- **版本自适应权限 flag**：≥1.18 用 `--auto`，更老版本用 `--dangerously-skip-permissions`（同一语义：自动批准未被显式拒绝的权限，deny 规则仍生效）
+- 验证/修复/Flow 注入全部使用干净摘要而非原始 JSON blob（修复 LLM 验证正则误匹配 JSON 元数据的 bug）
+
+### R2 会话连续性
+
+```yaml
+execution:
+  session: fresh     # fresh（默认）：每次全新会话
+                     # continue：--session 恢复上次会话，上下文完整继承
+                     # fork：--session --fork 分叉，继承历史但原会话不动
+```
+
+- `resolveContinueSession()` 从运行历史倒序找最近的 sessionId
+- **Agent Loop 自动链式 fork**：第 N+1 轮修复迭代 fork 第 N 轮的会话——Agent 修复时记得自己尝试过什么，同时每轮保留独立审计会话
+- 标准重试路径同样跟踪每次尝试实际使用的会话
+
+### R3 Serve 实时运行时
+
+可选执行模式：一个共享的 `opencode serve` 进程通过 HTTP API 执行任务（`OpenCodeServer`）。
+
+```
+┌────────────┐  POST /session?directory=<taskDir>   ┌─────────────────┐
+│            │ ────────────────────────────────────▶│                 │
+│ Sentinel   │  POST /session/:id/message (阻塞)     │  opencode serve │
+│ OpenCode-  │ ◀───────────────────────────────────▶│  (每目录 SSE)    │
+│ Server     │  GET /event?directory=... (SSE)      │                 │
+│            │  POST /session/:id/permissions/:id   │                 │
+│            │  POST /session/:id/abort             │                 │
+└────────────┘                                      └─────────────────┘
+```
+
+实测确认的关键行为（文档未写明）：
+- **SSE 事件按目录过滤**——必须 `GET /event?directory=...` 订阅对应任务目录
+- 单个 serve 进程可服务所有任务目录（`POST /session?directory=` 建目录绑定的会话）
+- 消息响应只含最终 assistant 消息；工具调用在中间消息里，需拉取全会话消息按时间聚合
+
+安全与超时：
+- **权限 fail-closed**：无处理器的权限请求立即拒绝；桌面审批对话框 120 秒无响应同样拒绝
+- 超时守卫触发 `POST /abort`；用户点停止 → AbortSignal → abort + 记录失败（error: aborted）
+- 调度触发的无人值守运行**始终走 CLI 路径**，只有手动运行可走 serve 模式
+
+### 执行路径统一
+
+`runTaskExecution` / `runAgentLoop` 接受 `executeOverride`：serve 模式注入闭包后，重试、历史持久化、Agent Loop、通知与 CLI 模式**完全同语义**。serve 不可用时自动回退 CLI。

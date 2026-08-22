@@ -6,7 +6,12 @@
 
 v1.0.0 带来 **Electron 桌面应用**，替代了之前的 Web Dashboard，提供原生窗口体验、实时事件推送和直接的核心引擎调用。
 
-v2.0.0 引入 **Loop Engineering**：Agent Loop 闭环、双模式验证（command + LLM）、迭代修复。
+v2.0.0 引入 **Loop Engineering**：Agent Loop 闭环、双模式验证（command + LLM）、迭代修复；随后加入 **Flow Engineering**：DAG 任务流编排（并行节点、条件边、预算、断点恢复、克隆、可视化画布）。
+
+v3.0.0 完成 **Agent Runtime 升级**（R1-R3）：
+- **R1 结构化审计** — 解析 opencode JSON 事件流，每次运行记录 sessionId / tokens / 成本 / 工具调用链；修复 Windows 下 npm shim 无法 spawn 的问题
+- **R2 会话连续性** — 任务可配置 `fresh / continue / fork` 会话模式，Agent Loop 修复迭代自动 fork 上一轮会话（Agent 记得自己做过什么）
+- **R3 Serve 实时运行时** — 可选 `opencode serve` 执行模式：实时输出流、权限审批对话框（允许一次/总是/拒绝）、运行中中止
 
 ## 快速开始
 
@@ -35,10 +40,13 @@ v1.0.0 新增 `@sentinel/desktop` — 基于 Electron + React + Tailwind 的原�
 | 功能 | 说明 |
 |------|------|
 | 任务列表 | 深色主题卡片式布局，状态指示器、调度信息、运行计数 |
-| 任务详情 | 5 标签页：概览 / 文件树 / 输出文件 / 执行历史 / OpenCode 配置 |
-| 创建任务 | 模态对话框，支持名称/描述/项目目录/调度/Prompt/模型 |
+| 任务详情 | 6 标签页：概览 / 文件树 / 输出文件 / 执行历史 / **实时** / OpenCode 配置 |
+| 创建任务 | 模态对话框，支持名称/描述/项目目录/调度/Prompt/模型/权限/**会话模式** |
+| Flow 画布 | SVG DAG 可视化：节点拖拽布局、条件边样式（失败红虚线）、节点编辑、断点恢复、克隆 |
+| 实时页签 | Serve 模式下：实时文本/推理/工具调用流、权限审批卡片、停止按钮（v3.0.0） |
+| 运行审计 | 每次运行显示步数/tokens/成本、可展开的工具调用链（v3.0.0） |
 | 调度器面板 | 一键启停，实时日志流（自动滚动 + 级别着色） |
-| 设置面板 | 应用信息、数据目录、快捷键参考 |
+| 设置面板 | 应用信息、数据目录、**运行模式切换（CLI / Serve 实时）**、快捷键参考 |
 | 实时更新 | 任务状态变更、调度器日志通过 Electron IPC 实时推送 |
 
 ### 架构
@@ -84,6 +92,7 @@ cd packages/desktop && npx electron-builder
 | `delete <name>` | 删除任务（加 --force 跳过确认） |
 | `scheduler start` | 启动调度守护进程 |
 | `scheduler status` | 查看调度器状态 |
+| `flow create/list/run/status/clone` | Flow 工作流管理（--input 传参、--resume 断点恢复） |
 
 > **注意**: v1.0.0 移除了 `serve` 命令和 Web Dashboard，改用桌面应用。
 
@@ -103,15 +112,58 @@ execution:
   prompt: "分析今天的 git log，生成开发日报"
   model: ""               # 空 = 使用默认
   agent: default
+  session: fresh          # fresh | continue | fork（v3.0.0 会话连续性）
   timeout: 600            # 超时秒数
   retry:
     max: 2                # 最大重试次数
-    delay: 60             # 重试间隔秒
+    delay: 60             # 重试间隔秒数
+
+agentLoop:                # 可选：执行 → 验证 → 修复迭代
+  enabled: true
+  maxIterations: 3
+  maxTotalSeconds: 1800   # 整个循环的墙钟预算
+  verification:
+    type: command         # command（shell 校验）| llm（语义校验）
+    command: "test -f output/daily.md"
+    onFailure: iterate    # iterate | notify | stop
 
 notify:                   # 可选
   on_success: webhook
   on_failure: webhook
   webhook_url: "https://..."
+```
+
+## Flow 工作流 (flow.yaml)
+
+多个任务编排成 DAG：无依赖关系的节点自动并行，支持条件边、运行预算、断点恢复。
+
+```yaml
+name: daily-pipeline
+version: 1
+
+nodes:
+  fetch:
+    type: ai
+    task: news-fetcher        # 引用已有任务的工作区
+  analyze:
+    type: ai
+    task: news-analyzer
+    needs: [fetch]
+    promptTemplate: "基于上游输出：{fetch.output}，输出分析报告"
+  notify:
+    type: script
+    needs:
+      - node: analyze
+        on: success           # 条件边：成功才走，失败走红色分支
+    run: "cat analyze/report.md | curl -d @- https://hook..."
+  fallback:
+    type: script
+    needs:
+      - node: analyze
+        on: failure
+    run: "echo analyze failed"
+
+maxTotalSeconds: 3600         # 整个 Flow 的墙钟预算
 ```
 
 ## 任务目录结构
@@ -146,8 +198,15 @@ sentinel/
 │   │       ├── events.ts        # 类型安全事件总线 (v1.0.0 新增)
 │   │       ├── cron.ts          # Cron 解析
 │   │       ├── task-store.ts    # 任务 CRUD + 持久化状态
-│   │       ├── executor.ts      # OpenCode 执行器
-│   │       ├── scheduler.ts     # 调度引擎
+│   │       ├── executor.ts      # OpenCode CLI 执行器（事件流解析/版本自适应）
+│   │       ├── opencode-events.ts # JSON 事件流 → 结构化审计 (v3.0.0)
+│   │       ├── opencode-server.ts # opencode serve 运行时 (v3.0.0)
+│   │       ├── agent-loop.ts    # Agent Loop 引擎 (v2.0.0)
+│   │       ├── verification.ts  # 双模式验证 (v2.0.0)
+│   │       ├── runner.ts        # 共享执行路径（调度/手动/CLI 同语义）
+│   │       ├── flow.ts          # Flow DAG 引擎 (v2.x)
+│   │       ├── flow-store.ts    # Flow 持久化 + 克隆
+│   │       ├── scheduler.ts     # 调度引擎（任务 + Flow）
 │   │       └── opencode-config.ts # OpenCode 配置生成器
 │   ├── cli/                     # @sentinel/cli 命令行
 │   │   └── src/
@@ -177,6 +236,19 @@ sentinel/
 | 🔒 命令注入防护 | `spawn()` 移除 `shell: true` |
 | 🔒 输出文件读取防护 | IPC handler 中 `resolve() + startsWith()` 校验 |
 | 🆕 IPC 类型共享 | `shared/ipc-types.ts` 单一信源 |
+
+## v3.0.0 变更摘要
+
+| 变更 | 说明 |
+|------|------|
+| 🆕 结构化运行审计 | 每次运行记录 sessionId / tokens / 成本 / 步数 / 工具调用链 |
+| 🆕 会话连续性 | `session: fresh/continue/fork`，跨运行继承上下文；修复迭代自动 fork |
+| 🆕 Serve 实时运行时 | 设置切换运行模式；实时页签（输出流/权限审批/停止按钮） |
+| 🔒 权限 fail-closed | 无人值守时权限请求自动拒绝；serve 模式 120s 无响应同样拒绝 |
+| 🐛 Windows 修复 | 解析 npm `.cmd` shim 找到原生 exe（此前 spawn ENOENT，任务无法启动） |
+| 🐛 LLM 验证误判修复 | 验证正则不再匹配原始 JSON 元数据，只匹配助手回答文本 |
+| 🆕 opencode 1.18 适配 | 版本自适应 `--auto` / 旧 flag |
+| 🆕 技能加载修复 | 移除不存在的 `--skill` 参数，技能由工作区 `.opencode/` 自动加载 |
 
 ## 依赖说明
 
@@ -233,8 +305,8 @@ opencode --version   # 确认已安装
                                 ┌────────▼────────┐
                                 │   opencode run   │
                                 │   --dir <taskdir> │
-                                │   --dangerously- │
-                                │   skip-permissions│
+                                │   --auto (1.18+) │
+                                │   --format json  │
                                 │   "<prompt>"     │
                                 └────────┬────────┘
                                          │
