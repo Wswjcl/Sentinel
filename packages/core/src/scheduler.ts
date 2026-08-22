@@ -2,6 +2,7 @@ import { TaskStore } from './task-store.js'
 import { FlowStore } from './flow-store.js'
 import { FlowEngine } from './flow.js'
 import { runTaskExecution } from './runner.js'
+import type { ExecutorOptions, ExecutionResult } from './executor.js'
 import { shouldRunNow, shouldRunInterval } from './cron.js'
 import { sentinelEvents } from './events.js'
 import type { TaskInfo } from './types.js'
@@ -13,6 +14,10 @@ export interface SchedulerOptions {
   concurrency?: number
   checkIntervalMs?: number
   opencodeBin?: string
+  /** Replace the CLI executor for scheduled runs AND flow AI nodes
+   *  (desktop app routes both through the opencode serve runtime when
+   *  the user selects serve mode). */
+  executeOverride?: (options: ExecutorOptions) => Promise<ExecutionResult>
 }
 
 export class Scheduler {
@@ -22,6 +27,7 @@ export class Scheduler {
   private concurrency: number
   private checkIntervalMs: number
   private opencodeBin: string
+  private executeOverride?: (options: ExecutorOptions) => Promise<ExecutionResult>
   private timer: ReturnType<typeof setInterval> | null = null
   private running = new Set<string>()
   private onLog?: (level: string, msg: string) => void
@@ -32,12 +38,14 @@ export class Scheduler {
     this.concurrency = options.concurrency ?? 3
     this.checkIntervalMs = options.checkIntervalMs ?? 60_000
     this.opencodeBin = options.opencodeBin ?? 'opencode'
+    this.executeOverride = options.executeOverride
     if (this.flowStore) {
       this.flowEngine = new FlowEngine({
         flowStore: this.flowStore,
         taskStore: this.store,
         opencodeBin: this.opencodeBin,
         concurrency: this.concurrency,
+        executeOverride: this.executeOverride,
         onLog: (level, msg) => this.log(level, msg),
       })
     }
@@ -172,6 +180,7 @@ export class Scheduler {
         name,
         info,
         opencodeBin: this.opencodeBin,
+        executeOverride: this.executeOverride,
         onLog: (level, msg) => this.log(level, msg),
       })
     } finally {

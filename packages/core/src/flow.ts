@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
 import { executeTask } from './executor.js'
+import type { ExecutorOptions, ExecutionResult } from './executor.js'
 import { resolveShell } from './verification.js'
 import { FlowStore } from './flow-store.js'
 import { TaskStore, isValidTaskName } from './task-store.js'
@@ -117,6 +118,8 @@ export interface FlowEngineOptions {
   opencodeBin?: string
   /** Default parallel-node limit when the flow doesn't set one (default 3). */
   concurrency?: number
+  /** Replace the CLI executor for AI nodes (desktop serve runtime). */
+  executeOverride?: (options: ExecutorOptions) => Promise<ExecutionResult>
   onLog?: (level: string, msg: string) => void
 }
 
@@ -139,6 +142,7 @@ export class FlowEngine {
   private taskStore: TaskStore
   private opencodeBin: string
   private concurrency: number
+  private executeOverride?: (options: ExecutorOptions) => Promise<ExecutionResult>
   private onLog?: (level: string, msg: string) => void
 
   constructor(options: FlowEngineOptions) {
@@ -146,6 +150,7 @@ export class FlowEngine {
     this.taskStore = options.taskStore
     this.opencodeBin = options.opencodeBin ?? 'opencode'
     this.concurrency = options.concurrency ?? 3
+    this.executeOverride = options.executeOverride
     this.onLog = options.onLog
   }
 
@@ -459,7 +464,7 @@ export class FlowEngine {
     }
 
     const prompt = this.resolveTemplate(aiNode?.promptTemplate ?? baseConfig.execution.prompt, run)
-    const result = await executeTask({
+    const result = await (this.executeOverride ?? executeTask)({
       taskDir,
       config: {
         ...baseConfig,

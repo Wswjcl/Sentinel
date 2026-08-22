@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { TaskInfo, TaskStatus, TaskRunRecord } from '@sentinel/core'
 import { ArrowLeft, Play, Pause, Trash2, RefreshCw, FolderOpen, FileText, Clock, Radio, Square, ShieldAlert } from 'lucide-react'
 import { useI18n } from '../../hooks/useI18n'
@@ -213,7 +213,7 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-6 selectable">
-        {tab === 'overview' && <OverviewTab task={task} />}
+        {tab === 'overview' && <OverviewTab task={task} onRefresh={refreshTask} />}
         {tab === 'workspace' && <WorkspaceTab tree={tree} />}
         {tab === 'outputs' && (
           <OutputsTab
@@ -233,9 +233,20 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
 
 // ─── Overview Tab ──────────────────────────────────────────────────
 
-function OverviewTab({ task }: { task: TaskInfo }) {
+function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => void }) {
   const { config, status, lastRun, nextRun, runCount } = task
   const { t } = useI18n()
+  const [sessionSaving, setSessionSaving] = useState(false)
+
+  const changeSession = async (session: 'fresh' | 'continue' | 'fork') => {
+    setSessionSaving(true)
+    try {
+      await window.api.updateTask(config.name, { execution: { session } })
+      onRefresh()
+    } finally {
+      setSessionSaving(false)
+    }
+  }
 
   const fields = [
     { label: t('detail.status'), value: t(`status.${status}`) },
@@ -258,6 +269,26 @@ function OverviewTab({ task }: { task: TaskInfo }) {
         <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">{t('detail.prompt')}</h3>
         <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-3">
           <p className="text-sm text-[var(--color-text)] whitespace-pre-wrap">{config.execution.prompt}</p>
+        </div>
+      </div>
+
+      {/* Session mode (editable) */}
+      <div>
+        <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">{t('create.session')}</h3>
+        <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-3 flex items-center gap-3">
+          <select
+            value={config.execution.session ?? 'fresh'}
+            disabled={sessionSaving}
+            onChange={(e) => changeSession(e.target.value as 'fresh' | 'continue' | 'fork')}
+            className="flex-1 bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
+                       px-3 py-1.5 text-sm text-[var(--color-text)]
+                       focus:outline-none focus:border-[var(--color-blue)] transition-colors"
+          >
+            <option value="fresh">{t('create.sessionFresh')}</option>
+            <option value="continue">{t('create.sessionContinue')}</option>
+            <option value="fork">{t('create.sessionFork')}</option>
+          </select>
+          {sessionSaving && <span className="text-xs text-[var(--color-text-dim)]">{t('detail.saving')}</span>}
         </div>
       </div>
 
@@ -395,12 +426,13 @@ interface LiveLine {
 function LiveTab({ task }: { task: TaskInfo }) {
   const { t } = useI18n()
   const [lines, setLines] = useState<LiveLine[]>([])
-  const [permission, setPermission] = useState<PermissionAskData | null>(null)
+  const [permissions, setPermissions] = useState<PermissionAskData[]>([])
+  const streamRef = useRef<HTMLDivElement>(null)
   const name = task.config.name
 
   useEffect(() => {
     setLines([])
-    setPermission(null)
+    setPermissions([])
     let seq = 0
     const push = (kind: LiveLine['kind'], text: string) => {
       setLines((prev) => [...prev, { id: seq++, kind, text }].slice(-500))
@@ -415,7 +447,8 @@ function LiveTab({ task }: { task: TaskInfo }) {
     })
     const unsubPerm = window.api.onTaskPermission(({ name: n, request }) => {
       if (n !== name) return
-      setPermission(request)
+      // Queue: a run may hit several permission asks in a row.
+      setPermissions((prev) => [...prev, request])
     })
     return () => {
       unsubLive()
@@ -423,10 +456,15 @@ function LiveTab({ task }: { task: TaskInfo }) {
     }
   }, [name])
 
-  const respond = async (response: 'once' | 'always' | 'reject') => {
-    if (!permission) return
-    await window.api.respondTaskPermission(permission.id, response)
-    setPermission(null)
+  // Keep the stream pinned to the bottom as new output arrives
+  useEffect(() => {
+    const el = streamRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [lines])
+
+  const respond = async (permissionId: string, response: 'once' | 'always' | 'reject') => {
+    setPermissions((prev) => prev.filter((p) => p.id !== permissionId))
+    await window.api.respondTaskPermission(permissionId, response)
   }
 
   return (
@@ -447,9 +485,12 @@ function LiveTab({ task }: { task: TaskInfo }) {
         )}
       </div>
 
-      {/* Permission approval dialog */}
-      {permission && (
-        <div className="mb-3 rounded-lg border border-[var(--color-yellow)] bg-[var(--color-card)] p-3">
+      {/* Permission approval cards (queued asks, newest last) */}
+      {permissions.map((permission) => (
+        <div
+          key={permission.id}
+          className="mb-3 rounded-lg border border-[var(--color-yellow)] bg-[var(--color-card)] p-3"
+        >
           <div className="flex items-center gap-2 mb-2">
             <ShieldAlert className="w-4 h-4 text-[var(--color-yellow)]" />
             <span className="text-sm font-medium text-[var(--color-text)]">
@@ -462,24 +503,27 @@ function LiveTab({ task }: { task: TaskInfo }) {
             </pre>
           )}
           <div className="flex gap-2">
-            <button onClick={() => respond('once')}
+            <button onClick={() => respond(permission.id, 'once')}
               className="px-3 py-1 rounded text-xs font-medium bg-[var(--color-green)] text-white hover:opacity-90">
               {t('detail.permissionOnce')}
             </button>
-            <button onClick={() => respond('always')}
+            <button onClick={() => respond(permission.id, 'always')}
               className="px-3 py-1 rounded text-xs font-medium bg-[var(--color-blue)] text-white hover:opacity-90">
               {t('detail.permissionAlways')}
             </button>
-            <button onClick={() => respond('reject')}
+            <button onClick={() => respond(permission.id, 'reject')}
               className="px-3 py-1 rounded text-xs font-medium bg-[var(--color-red)] text-white hover:opacity-90">
               {t('detail.permissionReject')}
             </button>
           </div>
         </div>
-      )}
+      ))}
 
       {/* Live stream */}
-      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-3 max-h-[50vh] overflow-y-auto">
+      <div
+        ref={streamRef}
+        className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-3 max-h-[50vh] overflow-y-auto"
+      >
         {lines.length === 0 ? (
           <p className="text-sm text-[var(--color-text-dim)]">{t('detail.liveEmpty')}</p>
         ) : (

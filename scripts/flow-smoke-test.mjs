@@ -224,6 +224,63 @@ check('T11 clone has no run history', clonedRuns.length === 0, `runs=${clonedRun
 const r11 = await engine.run('template-flow-2', { inputs: { who: 'clone' } })
 check('T11 cloned flow runs with its own inputs', (r11.nodes.a.output ?? '').includes('hi-clone'), r11.nodes.a.output)
 
+// ── Test 12: executeOverride plumbing (serve runtime injection) ──
+// A mock executor replaces the CLI path; verifies the override receives
+// resolved prompt/node identity and that downstream injection uses the
+// override's summary (not the raw CLI stdout).
+// The AI node reads the referenced task workspace before executing
+await fs.mkdir(join(tasksDir, 'some-task'), { recursive: true })
+await fs.writeFile(join(tasksDir, 'some-task', 'task.yaml'), `
+name: some-task
+description: mock task for override test
+version: 1
+schedule:
+  type: once
+  expr: "now"
+execution:
+  prompt: "base prompt"
+`, 'utf-8')
+const overrideCalls = []
+const overrideEngine = new FlowEngine({
+  flowStore: engine.flowStore ?? new FlowStore({ flowsDir }),
+  taskStore: new TaskStore({ tasksDir }),
+  concurrency: 3,
+  executeOverride: async (options) => {
+    overrideCalls.push({ name: options.config.name, prompt: options.promptOverride ?? options.config.execution.prompt })
+    return {
+      record: {
+        id: randomUUID(), taskName: options.config.name,
+        startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
+        status: 'success', exitCode: 0, sessionId: 'ses_mock_1',
+        tokens: { input: 10, output: 5, total: 15 }, cost: 0, steps: 1,
+        toolCalls: [{ tool: 'bash', status: 'completed' }],
+      },
+      stdout: 'RAW-JSON-BLOB', stderr: '',
+      summary: 'OVERRIDE-OUTPUT',
+    }
+  },
+  onLog: () => {},
+})
+await writeFlow('override-flow', `
+name: override-flow
+version: 1
+nodes:
+  ai1:
+    type: ai
+    task: some-task
+    promptTemplate: "do {inputs.x}"
+  consumer:
+    type: script
+    run: "echo got:{ai1.output}"
+    needs: [ai1]
+`)
+const r12 = await overrideEngine.run('override-flow', { inputs: { x: '42' } })
+check('T12 override executed for ai node', overrideCalls.length === 1 && overrideCalls[0].name === 'some-task', JSON.stringify(overrideCalls))
+check('T12 prompt template resolved', overrideCalls[0]?.prompt === 'do 42', overrideCalls[0]?.prompt)
+check('T12 node succeeded via override', r12.nodes.ai1.status === 'success', JSON.stringify(r12.nodes.ai1))
+check('T12 audit record id from override', typeof r12.nodes.ai1.taskRecordId === 'string' && r12.nodes.ai1.taskRecordId.length > 10, JSON.stringify(r12.nodes.ai1.taskRecordId))
+check('T12 downstream injection uses summary', (r12.nodes.consumer.output ?? '').includes('OVERRIDE-OUTPUT') && !(r12.nodes.consumer.output ?? '').includes('RAW-JSON-BLOB'), r12.nodes.consumer.output)
+
 // cleanup
 await fs.rm(tmp, { recursive: true, force: true })
 console.log(failures === 0 ? '\n=== ALL SMOKE TESTS PASSED ===' : `\n=== ${failures} TEST(S) FAILED ===`)
