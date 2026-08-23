@@ -168,12 +168,15 @@ nodes:
 maxTotalSeconds: 3600         # 整个 Flow 的墙钟预算
 ```
 
-## 任务目录结构
+## 任务目录结构（一目录一任务，v3.2.0）
+
+任务是**自包含的目录**：你选择的目录就是任务的家，task.yaml、运行历史、状态、`.opencode/`（技能/AGENTS.md/权限）全部住在里面，agent 执行时也以该目录为工作目录。Sentinel 数据目录只保存一份注册表（`tasks.json`：任务名 → 目录路径）。
 
 ```
-tasks/my-task/
+你的目录/（创建任务时指定，可以是已有项目）/
 ├── task.yaml                    # 任务定义（调度 + prompt + 模型配置）
-├── .status.json                 # 持久化状态（v1.0.0 新增）
+├── .status.json                 # 持久化状态
+├── .history.json                # 执行历史记录
 ├── .opencode/
 │   ├── opencode.json            # OpenCode 权限配置
 │   ├── AGENTS.md                # 该任务专属的 agent 规则
@@ -182,9 +185,14 @@ tasks/my-task/
 │           └── SKILL.md
 ├── scripts/                     # 任务脚本
 └── output/                      # 执行产物目录
-    ├── daily-2026-05-27.md
-    └── .history.json            # 执行历史记录
+    └── daily-2026-05-27.md
 ```
+
+规则：
+
+- 创建任务必须指定目录；同一个目录只能属于一个任务（防止两个任务互相覆盖）
+- 删除任务时：数据目录里的旧式任务整个删除；你的目录里的任务只移除 Sentinel 元数据（task.yaml/.history.json/.status.json/.opencode/opencode.json），**你的其余文件一律保留**
+- 升级兼容：旧版建在 `data/tasks/<名>/` 的任务自动认领进注册表，原地继续工作
 
 ## 项目结构
 

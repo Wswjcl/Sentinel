@@ -85,8 +85,8 @@ function printRun(run: FlowRun): void {
   }[run.status] ?? chalk.gray
   console.log(`  ${statusColor(`[${run.status}]`)} run ${run.id.slice(0, 8)}  started ${run.startedAt}${run.finishedAt ? `  finished ${run.finishedAt}` : ''}`)
   for (const nr of Object.values(run.nodes)) {
-    const icon = { success: '✓', failed: '✗', running: '◉', pending: '○', skipped: '⏭' }[nr.status]
-    const color = { success: chalk.green, failed: chalk.red, running: chalk.blue, pending: chalk.gray, skipped: chalk.gray }[nr.status] ?? chalk.gray
+    const icon = { success: '✓', failed: '✗', running: '◉', waiting: '⏸', pending: '○', skipped: '⏭' }[nr.status]
+    const color = { success: chalk.green, failed: chalk.red, running: chalk.blue, waiting: chalk.yellow, pending: chalk.gray, skipped: chalk.gray }[nr.status] ?? chalk.gray
     console.log(`    ${color(`${icon} ${nr.node}`)} (${nr.type})${nr.error ? chalk.red(` - ${nr.error.slice(0, 120)}`) : ''}`)
   }
 }

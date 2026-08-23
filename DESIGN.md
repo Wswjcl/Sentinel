@@ -132,7 +132,19 @@ states:
 }
 ```
 
-**启动恢复**：`TaskStore.init()` 调用 `recoverStates()`，将所有 orphaned `running` 状态重置为 `failed`（因为调度器未运行时不可能有正在执行的任务）。
+**启动恢复**：`TaskStore.init()` 先加载目录注册表，再调用 `recoverStates()`，将所有 orphaned `running` 状态重置为 `failed`（因为调度器未运行时不可能有正在执行的任务）。
+
+### 目录注册表（v3.2.0："一目录一任务"）
+
+任务的真实工作区是用户创建时指定的目录；数据目录只保存注册表 `tasks.json`（`{ version, tasks: { <名>: <绝对目录> } }`）。
+
+| 机制 | 说明 |
+|------|------|
+| 注册 | `createTask(name, dir)` 校验任务名唯一 + 目录唯一（Windows 下大小写不敏感），拒绝以数据 tasks 目录本身作为工作区 |
+| 认领 | `init()` 扫描 `tasksDir/<名>` 下含 task.yaml 的旧式任务，原址认领进注册表（升级零迁移） |
+| 回退 | 未注册名称的 `getTaskDir` 回退 `tasksDir/<名>`（测试/直接写盘的兼容路径） |
+| 删除 | 工作区在数据目录内 → 整目录删除（旧行为）；用户目录 → 只删 task.yaml/.history.json/.status.json/.opencode/opencode.json，其余文件保留 |
+| 执行 | executor `--dir`、serve 会话目录、文件树/技能/输出浏览全部经注册表指向真实目录；桌面端与 CLI 的创建路径统一走 `createTask`（修复旧版"配置在数据目录、骨架在项目目录"的脱节） |
 
 ## 事件系统（v1.0.0 新增）
 

@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs'
+import type { Dirent } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { TaskConfig, TaskInfo, TaskRunRecord, TaskStatus } from './types.js'
@@ -9,6 +10,22 @@ const TASK_CONFIG_FILE = 'task.yaml'
 const HISTORY_FILE = '.history.json'
 const STATUS_FILE = '.status.json'
 const OPENCODE_CONFIG_FILE = '.opencode/opencode.json'
+/** Registry: task name -> workspace directory ("one dir = one task"). */
+const REGISTRY_FILE = 'tasks.json'
+
+/** Normalize a path for comparisons: forward slashes, no trailing
+ *  slash, case-insensitive on Windows. */
+function normPath(p: string): string {
+  const r = resolve(p).replace(/\\/g, '/').replace(/\/+$/, '')
+  return process.platform === 'win32' ? r.toLowerCase() : r
+}
+
+/** Whether `child` equals or lies inside `parent` (both absolute). */
+function isInside(child: string, parent: string): boolean {
+  const c = normPath(child)
+  const p = normPath(parent)
+  return c === p || c.startsWith(p + '/')
+}
 
 /** Validate task name — prevent path traversal */
 export function isValidTaskName(name: string): boolean {
@@ -27,6 +44,11 @@ export interface TaskStoreOptions {
 
 export class TaskStore {
   private tasksDir: string
+  /** Task name -> absolute workspace dir. The workspace holds
+   *  everything (task.yaml, history, status, .opencode); the data dir
+   *  only stores this index. */
+  private dirs = new Map<string, string>()
+  private registryLoaded = false
 
   constructor(options: TaskStoreOptions) {
     this.tasksDir = options.tasksDir
@@ -34,8 +56,58 @@ export class TaskStore {
 
   async init(): Promise<void> {
     await fs.mkdir(this.tasksDir, { recursive: true })
+    await this.loadRegistry()
     // Recover inconsistent states on startup
     await this.recoverStates()
+  }
+
+  /** Load the name->dir registry. Legacy tasks living directly under
+   *  tasksDir are adopted in place (their dir stays where it is). */
+  private async loadRegistry(): Promise<void> {
+    if (this.registryLoaded) return
+    let dirty = false
+    try {
+      const raw = await fs.readFile(join(this.tasksDir, REGISTRY_FILE), 'utf-8')
+      const parsed = JSON.parse(raw) as { tasks?: Record<string, string> }
+      for (const [name, dir] of Object.entries(parsed.tasks ?? {})) {
+        if (isValidTaskName(name) && typeof dir === 'string' && dir.length > 0) {
+          this.dirs.set(name, resolve(dir))
+        }
+      }
+    } catch {}
+    // Adopt legacy tasks: any tasksDir/<name> with a task.yaml but no
+    // registry entry keeps living where it is
+    let entries: Dirent[]
+    try {
+      entries = await fs.readdir(this.tasksDir, { withFileTypes: true })
+    } catch {
+      entries = []
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !isValidTaskName(entry.name)) continue
+      try {
+        await fs.access(join(this.tasksDir, entry.name, TASK_CONFIG_FILE))
+        if (!this.dirs.has(entry.name)) {
+          this.dirs.set(entry.name, join(this.tasksDir, entry.name))
+          dirty = true
+        }
+      } catch {}
+    }
+    if (dirty) await this.persistRegistry()
+    this.registryLoaded = true
+  }
+
+  private async persistRegistry(): Promise<void> {
+    const tasks: Record<string, string> = {}
+    for (const name of [...this.dirs.keys()].sort()) {
+      tasks[name] = this.dirs.get(name)!
+    }
+    await fs.mkdir(this.tasksDir, { recursive: true })
+    await fs.writeFile(
+      join(this.tasksDir, REGISTRY_FILE),
+      JSON.stringify({ version: 1, tasks }, null, 2),
+      'utf-8',
+    )
   }
 
   /** Fix orphaned 'running' states from crashed scheduler runs */
@@ -52,20 +124,38 @@ export class TaskStore {
   }
 
   async listTasks(): Promise<string[]> {
-    const entries = await fs.readdir(this.tasksDir, { withFileTypes: true })
-    const names: string[] = []
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue
-      try {
-        await fs.access(join(this.tasksDir, entry.name, TASK_CONFIG_FILE))
-        names.push(entry.name)
-      } catch {}
-    }
-    return names
+    await this.loadRegistry()
+    return [...this.dirs.keys()].sort()
   }
 
   getTaskDir(name: string): string {
-    return join(this.tasksDir, name)
+    // Unregistered names fall back to the legacy data-dir location
+    // (direct workspace writes, e.g. fixtures, keep working)
+    return this.dirs.get(name) ?? join(this.tasksDir, name)
+  }
+
+  /** Register a task workspace: the directory becomes the task's home
+   *  (config, history, status, .opencode all live there). Rejects
+   *  duplicate names and directories already owned by another task. */
+  async createTask(name: string, dir: string): Promise<void> {
+    if (!isValidTaskName(name)) {
+      throw new Error(`Invalid task name: ${name}`)
+    }
+    await this.loadRegistry()
+    if (this.dirs.has(name)) {
+      throw new Error(`Workspace already exists: ${name}`)
+    }
+    const abs = resolve(dir)
+    if (normPath(abs) === normPath(this.tasksDir)) {
+      throw new Error('Task directory cannot be the Sentinel tasks directory itself')
+    }
+    const taken = [...this.dirs.entries()].find(([, d]) => normPath(d) === normPath(abs))
+    if (taken) {
+      throw new Error(`Directory is already used by task "${taken[0]}"`)
+    }
+    await fs.mkdir(abs, { recursive: true })
+    this.dirs.set(name, abs)
+    await this.persistRegistry()
   }
 
   /** Safely resolve a path under a task directory, preventing traversal */
@@ -91,7 +181,7 @@ export class TaskStore {
     if (!isValidTaskName(name)) {
       throw new Error(`Invalid task name: ${name}`)
     }
-    const dir = join(this.tasksDir, name)
+    const dir = this.getTaskDir(name)
     await fs.mkdir(dir, { recursive: true })
     const configPath = join(dir, TASK_CONFIG_FILE)
     await fs.writeFile(configPath, stringifyYaml(config), 'utf-8')
@@ -101,7 +191,26 @@ export class TaskStore {
     if (!isValidTaskName(name)) {
       throw new Error(`Invalid task name: ${name}`)
     }
-    await fs.rm(join(this.tasksDir, name), { recursive: true, force: true })
+    await this.loadRegistry()
+    const dir = this.getTaskDir(name)
+    if (isInside(dir, this.tasksDir)) {
+      // Sentinel-owned workspace (legacy/CLI default location): remove
+      // the whole directory, as before
+      await fs.rm(dir, { recursive: true, force: true })
+    } else {
+      // User directory: remove only Sentinel's metadata files, keep
+      // everything else (it's the user's project)
+      await Promise.all(
+        [
+          join(dir, TASK_CONFIG_FILE),
+          join(dir, HISTORY_FILE),
+          join(dir, STATUS_FILE),
+          join(dir, OPENCODE_CONFIG_FILE),
+        ].map((p) => fs.rm(p, { force: true })),
+      )
+    }
+    this.dirs.delete(name)
+    await this.persistRegistry()
   }
 
   async getOpenCodeConfig(name: string): Promise<OpenCodeConfig | null> {
@@ -118,9 +227,9 @@ export class TaskStore {
     if (!isValidTaskName(name)) {
       throw new Error(`Invalid task name: ${name}`)
     }
-    const dir = join(this.tasksDir, name, '.opencode')
+    const dir = join(this.getTaskDir(name), '.opencode')
     await fs.mkdir(dir, { recursive: true })
-    const configPath = join(this.tasksDir, name, OPENCODE_CONFIG_FILE)
+    const configPath = join(this.getTaskDir(name), OPENCODE_CONFIG_FILE)
     await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8')
   }
 

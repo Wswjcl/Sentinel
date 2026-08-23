@@ -2,7 +2,7 @@ import { Command } from 'commander'
 import { promises as fs } from 'node:fs'
 import { join, resolve, isAbsolute } from 'node:path'
 import { stringify } from 'yaml'
-import { isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, loadConfig, type SentinelAppConfig, type AgentLoopConfig } from '@sentinel/core'
+import { isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, loadConfig, TaskStore, type SentinelAppConfig, type AgentLoopConfig } from '@sentinel/core'
 import type { TaskConfig, ExternalDir } from '@sentinel/core'
 import { createInterface, type Interface } from 'node:readline'
 
@@ -109,11 +109,15 @@ export const createCommand = new Command('create')
       ? (isAbsolute(options.projectDir) ? options.projectDir : resolve(options.projectDir))
       : join(tasksDir, name)
 
+    // One directory = one task: register the workspace (name +
+    // directory uniqueness) so list/run/scheduler can find it
+    const store = new TaskStore({ tasksDir })
     try {
-      await fs.access(taskDir)
-      console.error(`Workspace already exists at ${taskDir}`)
+      await store.createTask(name, taskDir)
+    } catch (err) {
+      console.error(String((err as Error).message))
       process.exit(1)
-    } catch {}
+    }
 
     let scheduleExpr = options.schedule
     let prompt = options.prompt || ''

@@ -380,26 +380,18 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.TASKS_CREATE, async (_e, opts: CreateTaskOpts) => {
     if (!opts.name) throw new Error('name is required')
+    // One directory = one task: the workspace IS the user's directory
+    if (!opts.projectDir || !opts.projectDir.trim()) {
+      throw new Error('project directory is required')
+    }
     const scheduleType = opts.schedule?.type || 'cron'
     if (opts.schedule?.expr && !isValidSchedule(scheduleType, opts.schedule.expr)) {
       throw new Error(`Invalid ${scheduleType} expression: ${opts.schedule.expr}`)
     }
 
-    const taskDir = opts.projectDir
-      ? (resolve(opts.projectDir) === opts.projectDir ? opts.projectDir : resolve(opts.projectDir))
-      : store.getTaskDir(opts.name)
-
-    // Check if already exists
-    try {
-      await store.getConfig(opts.name)
-      throw new Error('Workspace already exists')
-    } catch (err: any) {
-      if (err.message !== 'Workspace already exists') {
-        // Task doesn't exist yet — good
-      } else {
-        throw err
-      }
-    }
+    // Registers the workspace and enforces name + directory uniqueness
+    const taskDir = resolve(opts.projectDir.trim())
+    await store.createTask(opts.name, taskDir)
 
     const finalConfig: TaskConfig = {
       name: opts.name,
