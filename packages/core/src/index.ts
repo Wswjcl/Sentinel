@@ -59,4 +59,4 @@ export type {
   OpenCodeServerOptions,
 } from './opencode-server.js'
 export type { TaskRunnerOptions, TaskRunOutcome } from './runner.js'
-export type { FlowValidationResult, FlowEngineOptions, FlowRunOptions, ManualGateDecision } from './flow.js'
+export type { FlowValidationResult, FlowValidationOptions, FlowEngineOptions, FlowRunOptions, ManualGateDecision } from './flow.js'

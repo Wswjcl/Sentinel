@@ -38,8 +38,16 @@ export interface FlowValidationResult {
   errors: string[]
 }
 
+export interface FlowValidationOptions {
+  /** Draft mode (editor autosave): fill-in fields may still be empty -
+   *  ai nodes without a task reference and script nodes without a run
+   *  command are allowed to SAVE but remain un-runnable. Structural
+   *  errors (names, dependency references, cycles) are still reported. */
+  lenient?: boolean
+}
+
 /** Validate a flow config: node shape, dependency references, cycles. */
-export function validateFlow(config: FlowConfig): FlowValidationResult {
+export function validateFlow(config: FlowConfig, options?: FlowValidationOptions): FlowValidationResult {
   const errors: string[] = []
 
   if (!config?.name || !isValidTaskName(config.name)) {
@@ -72,10 +80,10 @@ export function validateFlow(config: FlowConfig): FlowValidationResult {
         errors.push(`node "${name}" has invalid edge condition "${String(need.on)}"`)
       }
     }
-    if (node.type === 'ai' && !node.task) {
+    if (node.type === 'ai' && !node.task && !options?.lenient) {
       errors.push(`ai node "${name}" requires a task reference`)
     }
-    if (node.type === 'script' && !node.run) {
+    if (node.type === 'script' && !node.run && !options?.lenient) {
       errors.push(`script node "${name}" requires a run command`)
     }
   }

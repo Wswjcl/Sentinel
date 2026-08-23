@@ -361,6 +361,32 @@ check('T15 budget cancels waiting gate', r15.nodes.gate.status === 'skipped' && 
 check('T15 flow failed on budget', r15.status === 'failed', `status=${r15.status}`)
 check('T15 cancelled gate no longer resolvable', engine.resolveManualNode('gate-budget-flow', r15.id, 'gate', { approved: true }) === false)
 
+// ── Test 16: lenient draft validation (editor autosave) ──
+const draftCfg = {
+  name: 'draft-flow', version: 1,
+  nodes: { a: { type: 'ai' }, b: { type: 'script' } },
+}
+const draft = validateFlow(draftCfg, { lenient: true })
+check('T16 lenient allows missing task/run', draft.valid, JSON.stringify(draft.errors))
+const draftStructural = validateFlow({ ...draftCfg, nodes: { ...draftCfg.nodes, a: { type: 'ai', needs: ['ghost'] } } }, { lenient: true })
+check('T16 lenient still rejects structural errors', !draftStructural.valid && draftStructural.errors.some((e) => e.includes('unknown node')), JSON.stringify(draftStructural.errors))
+const strict = validateFlow(draftCfg)
+check('T16 strict still rejects missing task', !strict.valid && strict.errors.some((e) => e.includes('requires a task reference')), JSON.stringify(strict.errors))
+await writeFlow('draft-flow', `
+name: draft-flow
+version: 1
+nodes:
+  a:
+    type: ai
+`)
+let draftRunErr = null
+try {
+  await engine.run('draft-flow')
+} catch (err) {
+  draftRunErr = String(err)
+}
+check('T16 engine refuses to run a draft', draftRunErr !== null && draftRunErr.includes('requires a task reference'), draftRunErr)
+
 // cleanup
 await fs.rm(tmp, { recursive: true, force: true })
 console.log(failures === 0 ? '\n=== ALL SMOKE TESTS PASSED ===' : `\n=== ${failures} TEST(S) FAILED ===`)

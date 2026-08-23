@@ -734,7 +734,10 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC.FLOWS_SAVE, async (_e, name: string, config: FlowConfig) => {
-    const result = validateFlow(config)
+    // Lenient: the editor autosaves while the author is still filling
+    // fields (ai task ref, script command) - those make the flow
+    // un-runnable, not un-savable. Structural errors still reject.
+    const result = validateFlow(config, { lenient: true })
     if (!result.valid) {
       throw new Error(`Invalid flow: ${result.errors.join('; ')}`)
     }
@@ -754,8 +757,13 @@ function registerIpcHandlers(): void {
     inputs?: Record<string, string>,
     resumeRunId?: string,
   ) => {
-    // Verify the flow loads before firing the async run
-    await flowStore.getConfig(name)
+    // Verify the flow loads and is runnable before firing the async run
+    // (a draft with missing ai task refs fails here, visibly)
+    const config = await flowStore.getConfig(name)
+    const validation = validateFlow(config)
+    if (!validation.valid) {
+      throw new Error(`Invalid flow: ${validation.errors.join('; ')}`)
+    }
     if (flowRunLocks.has(name)) {
       throw new Error(`流程 "${name}" 已在运行中（含等待人工审批），请先完成当前运行`)
     }
