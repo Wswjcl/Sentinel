@@ -216,7 +216,26 @@
     "gatePromptPlaceholder": "What to check before approving, shown on the gate card...",
     "nodeTaskPlaceholder": "reference an existing task; empty = inline",
     "nodeTaskRefHint": "Reference mode: runs in that task workspace (its skills and OpenCode config apply)",
-    "nodeTaskInlineHint": "Inline mode: runs in the flow directory; the prompt is the task definition, flow .opencode/skills apply"
+    "nodeTaskInlineHint": "Inline mode: runs in the flow directory; the prompt is the task definition, flow .opencode/skills apply",
+    "runsClickHint": "Click a node to inspect its output and failure reason",
+    "outputLabel": "Output",
+    "errorLabel": "Error",
+    "duration": "duration",
+    "startedAt": "started",
+    "waitingFor": "waiting for",
+    "noOutput": "(no output)",
+    "aiTakeoverBadge": "AI takeover",
+    "taskRecordId": "Linked task run record",
+    "skipReasonLabel": "Skipped because",
+    "skipReason": {
+      "upstream-failure": "upstream failed",
+      "branch-not-taken": "branch not taken",
+      "manual-gate": "manual gate",
+      "unreachable": "unreachable",
+      "budget-exhausted": "budget exhausted"
+    },
+    "injectUpstream": "Auto-attach upstream results as context",
+    "injectUpstreamHint": "Appends direct dependencies' outputs (errors when failed) to the prompt - no {node.output} placeholders needed"
   },
   "scheduler": {
     "title": "Scheduler",

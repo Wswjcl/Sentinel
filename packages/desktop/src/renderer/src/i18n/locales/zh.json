@@ -216,7 +216,26 @@
     "gatePromptPlaceholder": "审批卡片上展示的检查要点...",
     "nodeTaskPlaceholder": "引用已有任务；留空 = 内嵌执行",
     "nodeTaskRefHint": "引用模式：在该任务的工作区执行（沿用其技能与 OpenCode 配置）",
-    "nodeTaskInlineHint": "内嵌模式：在流程目录执行，提示词即任务定义，流程 .opencode/skills 的技能可用"
+    "nodeTaskInlineHint": "内嵌模式：在流程目录执行，提示词即任务定义，流程 .opencode/skills 的技能可用",
+    "runsClickHint": "点击节点查看输出与失败原因",
+    "outputLabel": "输出",
+    "errorLabel": "错误",
+    "duration": "耗时",
+    "startedAt": "开始",
+    "waitingFor": "已等待",
+    "noOutput": "（无输出）",
+    "aiTakeoverBadge": "AI 接管",
+    "taskRecordId": "关联的任务运行记录",
+    "skipReasonLabel": "跳过原因",
+    "skipReason": {
+      "upstream-failure": "上游失败",
+      "branch-not-taken": "分支未触发",
+      "manual-gate": "人工门禁",
+      "unreachable": "不可达",
+      "budget-exhausted": "预算耗尽"
+    },
+    "injectUpstream": "自动附加上游结果作为上下文",
+    "injectUpstreamHint": "执行时把直接依赖节点的输出（失败时为错误信息）附加到提示词，无需手写 {node.output}"
   },
   "scheduler": {
     "title": "调度器",

@@ -552,10 +552,12 @@ type FlowEdge = string | { node: string; on?: 'success' | 'failure' | 'finished'
 | 人工门禁 | manual 节点进入 `waiting` 挂起整条分支，等 `resolveManualNode` 决议（v3.1.0 前为直接跳过） |
 | 导入/导出 | 流程定义以 YAML 文件导入导出；导入时校验 + 重名自动加后缀，运行历史与任务工作区不随文件携带 |
 | 技能库 | 桌面端聚合所有任务/流程工作区 `.opencode/skills` 的技能：编辑/新建/删除/跨工作区复制（整目录含附加文件）/导入导出 .md；技能与工作区名校验防路径穿越 |
+| 上下文注入 | ai 节点（含 manual 的 AI 接管）默认把直接依赖节点的结果自动附加到提示词末尾（`<upstream_results>` 块：成功=输出，失败=错误信息，单项截断至 4000 字符保留首尾）；`injectUpstream: false` 关闭。与显式 `{node.output}` 占位符叠加生效 |
+| 节点检查 | 运行记录中节点可点击展开检查面板：状态/耗时/等待时长/跳过原因/错误/完整输出（含运行中实时刷新，节点落盘即显示） |
 
 ### 节点类型
 
-- **ai** — 两种形态（v3.2.0）：**引用模式**（`task: xxx`）在已有任务的工作区执行，沿用其技能与 OpenCode 配置；**内嵌模式**（无 `task`，`promptTemplate` 必填）在流程目录执行，流程级 `.opencode/skills` 可用。两者都支持 `{node.output}`（上游输出注入）与 `{inputs.key}`（运行时输入）占位符
+- **ai** — 两种形态（v3.2.0）：**引用模式**（`task: xxx`）在已有任务的工作区执行，沿用其技能与 OpenCode 配置；**内嵌模式**（无 `task`，`promptTemplate` 必填）在流程目录执行，流程级 `.opencode/skills` 可用。两者都支持 `{node.output}`（上游输出注入）与 `{inputs.key}`（运行时输入）占位符；同时默认自动附加上游结果上下文（`injectUpstream: false` 关闭，见上表）
 - **script** — 目录内 shell 命令，带超时与 cwd
 - **manual** — 人工门禁；未开启 `aiTakeover` 时进入 `waiting` 真正阻塞等待人工决议：通过（备注作为 `{node.output}` 注入下游，缺省 'approved'）或拒绝（节点失败，备注为失败原因）。`gatePrompt` 是展示给审批人的检查要点；`maxTotalSeconds` 预算耗尽时等待中的门禁被取消（skipped: budget-exhausted）；桌面端提供审批卡片 + 系统通知，同一流程同时只允许一个运行（含等待审批期间）
 

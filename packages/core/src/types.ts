@@ -162,6 +162,12 @@ export interface FlowNodeBase {
    *  or 'continue' (downstream nodes still run). Superseded by
    *  conditional edges ({ node, on: ... }) but kept for compatibility. */
   onFailure?: 'stop' | 'continue'
+  /** AI execution only (ai nodes + manual aiTakeover): automatically append
+   *  the direct upstream dependencies' results to the prompt as context,
+   *  so downstream agents always see what their inputs produced - even
+   *  without explicit {node.output} placeholders in the prompt template.
+   *  Default true. */
+  injectUpstream?: boolean
   /** Optional canvas position (persisted layout; auto-layout when absent). */
   position?: { x: number; y: number }
 }

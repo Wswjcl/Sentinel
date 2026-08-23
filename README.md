@@ -139,6 +139,8 @@ notify:                   # 可选
 ## Flow 工作流 (flow.yaml)
 
 多个任务编排成 DAG：无依赖关系的节点自动并行，支持条件边、运行预算、断点恢复。
+AI 节点会自动把直接依赖节点的结果附加上下文（`injectUpstream: false` 可关闭），
+运行记录里可点击任意节点查看输出与失败原因。
 
 ```yaml
 name: daily-pipeline
@@ -151,7 +153,7 @@ nodes:
   summarize:                  # 内嵌模式：不引用任务，提示词即定义，
     type: ai                  # 在流程目录执行（v3.2.0）
     promptTemplate: "用三句话总结：{fetch.output}"
-    needs: [fetch]
+    needs: [fetch]            # fetch 的结果自动作为上下文附加
   analyze:
     type: ai
     task: news-analyzer

@@ -31,6 +31,16 @@ export function edgeCondition(need: string | FlowEdge): FlowEdgeCondition {
   return typeof need === 'string' ? 'success' : (need.on ?? 'success')
 }
 
+/** Cap a text block appended as AI context: keep head + tail so both the
+ *  beginning and the end of long reports survive truncation. */
+const CONTEXT_CLIP = 4000
+function clipForContext(text: string): string {
+  if (text.length <= CONTEXT_CLIP) return text
+  const head = Math.floor(CONTEXT_CLIP * 0.4)
+  const tail = CONTEXT_CLIP - head
+  return `${text.slice(0, head)}\n…(truncated ${text.length - CONTEXT_CLIP} chars)…\n${text.slice(-tail)}`
+}
+
 // ─── Validation ─────────────────────────────────────────────
 
 export interface FlowValidationResult {
@@ -485,6 +495,32 @@ export class FlowEngine {
       .replace(/\{inputs\.([\w-]+)\}/g, (_m, key: string) => run.inputs?.[key] ?? '')
   }
 
+  /** Compose the automatic upstream context block for an AI execution:
+   *  every direct dependency's result - the output on success, or the
+   *  error when a failed upstream was reached via a failure/finished
+   *  edge (or onFailure: continue). Returns null when there is nothing
+   *  to inject (no needs, or no dependency produced content). */
+  private buildUpstreamContext(config: FlowConfig, run: FlowRun, name: string): string | null {
+    const needs = config.nodes[name]?.needs ?? []
+    if (needs.length === 0) return null
+    const sections: string[] = []
+    for (const need of needs) {
+      const dep = edgeTarget(need)
+      const nr = run.nodes[dep]
+      if (!nr) continue
+      let body: string | undefined
+      if (nr.status === 'success') {
+        body = nr.output?.trim()
+      } else if (nr.status === 'failed') {
+        body = nr.error?.trim() ? `error: ${nr.error!.trim()}` : undefined
+      }
+      if (!body) continue
+      sections.push(`<upstream node="${dep}" status="${nr.status}">\n${clipForContext(body)}\n</upstream>`)
+    }
+    if (sections.length === 0) return null
+    return `<upstream_results>\n${sections.join('\n')}\n</upstream_results>`
+  }
+
   private async runScriptNode(
     flowName: string,
     run: FlowRun,
@@ -555,7 +591,15 @@ export class FlowEngine {
       if (!aiNode) nr.aiTakeover = true
     }
 
-    const prompt = this.resolveTemplate(aiNode?.promptTemplate ?? baseConfig.execution.prompt, run)
+    let prompt = this.resolveTemplate(aiNode?.promptTemplate ?? baseConfig.execution.prompt, run)
+    // Automatic upstream context: dependencies' results ride along even
+    // when the prompt template doesn't reference them via {node.output}.
+    if (config.nodes[name]?.injectUpstream !== false) {
+      const context = this.buildUpstreamContext(config, run, name)
+      if (context) {
+        prompt = `${prompt}\n\nThe following are the results of the upstream nodes this step depends on (use them as context):\n${context}`
+      }
+    }
     const result = await (this.executeOverride ?? executeTask)({
       taskDir,
       config: {

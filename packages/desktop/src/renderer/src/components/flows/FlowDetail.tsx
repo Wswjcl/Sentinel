@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { ArrowLeft, Play, Plus, Trash2, Save, RotateCcw, Check, X, Download, ShieldAlert } from 'lucide-react'
-import type { FlowConfig, FlowNode, FlowNodeStatus, FlowRun } from '@sentinel/core'
+import type { FlowConfig, FlowNode, FlowNodeStatus, FlowNodeRun, FlowRun } from '@sentinel/core'
 import { edgeTarget, edgeCondition } from '../../lib/flow-edges'
 import type { FlowInfo } from '../../../../shared/ipc-types'
 import { useI18n } from '../../hooks/useI18n'
@@ -28,6 +28,7 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
   const [saving, setSaving] = useState(false)
   const [gates, setGates] = useState<{ runId: string; node: string; message?: string }[]>([])
   const [gateNotes, setGateNotes] = useState<Record<string, string>>({})
+  const [inspect, setInspect] = useState<{ runId: string; node: string } | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -36,6 +37,21 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
       setError(String(err))
     }
   }, [name])
+
+  // Debounced refresh while a run is live: every node settle persists the
+  // run, so re-reading it surfaces outputs/errors mid-run (inspection).
+  const refreshTimer = useRef<number | null>(null)
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimer.current !== null) return
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null
+      void refresh()
+    }, 200)
+  }, [refresh])
+
+  useEffect(() => () => {
+    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current)
+  }, [])
 
   useEffect(() => {
     refresh()
@@ -76,6 +92,8 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
         if (data.status !== 'waiting') {
           setGates((prev) => prev.filter((g) => !(g.runId === data.runId && g.node === data.node)))
         }
+        // Pick up settled node outputs/errors for the inspector
+        scheduleRefresh()
       } else if (data.event === 'manual-gate') {
         setGates((prev) =>
           prev.some((g) => g.runId === data.runId && g.node === data.node)
@@ -89,7 +107,7 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
       }
     })
     return unsub
-  }, [name, refresh])
+  }, [name, refresh, scheduleRefresh])
 
   if (!info) {
     return (
@@ -218,6 +236,83 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
     return <span className={`font-medium ${cls}`}>{t(`flows.flowStatus.${s}`)}</span>
   }
 
+  const nodeStatusCls = (s: FlowNodeStatus): string =>
+    s === 'success' ? 'text-[var(--color-green)]' :
+    s === 'failed' ? 'text-[var(--color-red)]' :
+    s === 'running' ? 'text-[var(--color-blue)]' :
+    s === 'waiting' ? 'text-[var(--color-yellow, #eab308)]' :
+    'text-[var(--color-text-dim)]'
+
+  const nodeStatusIcon = (s: FlowNodeStatus): string =>
+    s === 'success' ? '✓' : s === 'failed' ? '✗' : s === 'running' ? '◉' :
+    s === 'waiting' ? '⏸' : s === 'pending' ? '○' : '⏭'
+
+  const fmtDuration = (start?: string, end?: string): string | null => {
+    if (!start || !end) return null
+    const ms = Date.parse(end) - Date.parse(start)
+    if (Number.isNaN(ms) || ms < 0) return null
+    if (ms < 1000) return `${ms}ms`
+    const s = Math.round(ms / 1000)
+    return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${s % 60}s`
+  }
+
+  /** Node run inspector: full output / failure reason / timing for one
+   *  node of one run - the "why did it fail / what did it produce" view. */
+  const nodeInspector = (run: FlowRun, nr: FlowNodeRun) => {
+    const dur = fmtDuration(nr.startedAt, nr.finishedAt)
+    const waitDur = fmtDuration(nr.waitingSince, nr.finishedAt ?? undefined)
+    return (
+      <div className="mt-2 pt-2 border-t border-[var(--color-border)] space-y-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          <span className={`font-medium ${nodeStatusCls(nr.status)}`}>
+            {nodeStatusIcon(nr.status)} {nr.node}
+          </span>
+          <span className="text-[var(--color-text-dim)] font-mono">{nr.type}</span>
+          {nr.aiTakeover && (
+            <span className="px-1.5 py-0.5 rounded bg-[var(--color-blue)]/15 text-[var(--color-blue)]">
+              {t('flows.aiTakeoverBadge')}
+            </span>
+          )}
+          {nr.startedAt && (
+            <span className="text-[var(--color-text-dim)]">
+              {t('flows.startedAt')} {new Date(nr.startedAt).toLocaleString()}
+            </span>
+          )}
+          {dur && <span className="text-[var(--color-text-dim)]">{t('flows.duration')} {dur}</span>}
+          {nr.status === 'waiting' && waitDur && (
+            <span className="text-[var(--color-yellow, #eab308)]">{t('flows.waitingFor')} {waitDur}</span>
+          )}
+          {nr.taskRecordId && (
+            <span className="text-[var(--color-text-dim)] font-mono" title={t('flows.taskRecordId')}>
+              ⧉ {nr.taskRecordId.slice(0, 8)}
+            </span>
+          )}
+        </div>
+        {nr.skipReason && (
+          <div className="text-xs text-[var(--color-text-dim)]">
+            {t('flows.skipReasonLabel')}: {t(`flows.skipReason.${nr.skipReason}`)}
+          </div>
+        )}
+        {nr.error && (
+          <div>
+            <div className="text-xs font-medium text-[var(--color-red)] mb-1">{t('flows.errorLabel')}</div>
+            <pre className="text-xs text-[var(--color-red)] bg-[var(--color-red)]/10 rounded-lg p-2
+                           whitespace-pre-wrap break-all max-h-40 overflow-auto font-mono">{nr.error}</pre>
+          </div>
+        )}
+        <div>
+          <div className="text-xs font-medium text-[var(--color-text-muted)] mb-1">{t('flows.outputLabel')}</div>
+          {nr.output ? (
+            <pre className="text-xs text-[var(--color-text)] bg-[var(--color-hover)] rounded-lg p-2
+                           whitespace-pre-wrap break-words max-h-64 overflow-auto font-mono">{nr.output}</pre>
+          ) : (
+            <span className="text-xs text-[var(--color-text-dim)]">{t('flows.noOutput')}</span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -329,7 +424,10 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
 
           {/* Run history */}
           <div>
-            <h2 className="text-sm font-semibold text-[var(--color-text-bright)] mb-2">{t('flows.runs')}</h2>
+            <h2 className="text-sm font-semibold text-[var(--color-text-bright)] mb-2">
+              {t('flows.runs')}
+              <span className="ml-2 text-xs font-normal text-[var(--color-text-dim)]">{t('flows.runsClickHint')}</span>
+            </h2>
             {lastRuns.length === 0 ? (
               <p className="text-xs text-[var(--color-text-dim)]">{t('flows.noRuns')}</p>
             ) : (
@@ -360,22 +458,23 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                       )}
                     </div>
                     <div className="flex flex-wrap gap-2 mt-1">
-                      {Object.values(run.nodes).map((nr) => (
-                        <span
-                          key={nr.node}
-                          title={nr.error ?? nr.output ?? ''}
-                          className={`px-1.5 py-0.5 rounded ${
-                            nr.status === 'success' ? 'text-[var(--color-green)]' :
-                            nr.status === 'failed' ? 'text-[var(--color-red)]' :
-                            nr.status === 'running' ? 'text-[var(--color-blue)]' :
-                            nr.status === 'waiting' ? 'text-[var(--color-yellow, #eab308)]' :
-                            'text-[var(--color-text-dim)]'
-                          }`}
-                        >
-                          {nr.status === 'success' ? '✓' : nr.status === 'failed' ? '✗' : nr.status === 'running' ? '◉' : nr.status === 'waiting' ? '⏸' : nr.status === 'pending' ? '○' : '⏭'} {nr.node}
-                        </span>
-                      ))}
+                      {Object.values(run.nodes).map((nr) => {
+                        const selected = inspect?.runId === run.id && inspect.node === nr.node
+                        return (
+                          <button
+                            key={nr.node}
+                            type="button"
+                            onClick={() => setInspect(selected ? null : { runId: run.id, node: nr.node })}
+                            title={nr.error ?? nr.output ?? ''}
+                            className={`px-1.5 py-0.5 rounded cursor-pointer transition-colors hover:bg-[var(--color-hover)]
+                                        ring-1 ring-inset ${selected ? 'ring-[var(--color-blue)]' : 'ring-transparent'} ${nodeStatusCls(nr.status)}`}
+                          >
+                            {nodeStatusIcon(nr.status)} {nr.node}
+                          </button>
+                        )
+                      })}
                     </div>
+                    {inspect?.runId === run.id && run.nodes[inspect.node] && nodeInspector(run, run.nodes[inspect.node])}
                   </div>
                 ))}
               </div>
@@ -501,6 +600,22 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                       placeholder="{upstream.output}"
                     />
                   </div>
+                  {(node.needs ?? []).length > 0 && (
+                    <div>
+                      <label className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={node.injectUpstream ?? true}
+                          onChange={(e) => updateNode(selectedNode!, { injectUpstream: e.target.checked })}
+                          className="accent-[var(--color-blue)]"
+                        />
+                        {t('flows.injectUpstream')}
+                      </label>
+                      <p className="text-xs text-[var(--color-text-dim)] mt-1">
+                        {t('flows.injectUpstreamHint')}
+                      </p>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -549,6 +664,17 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                         rows={3}
                         className={`${inputCls} resize-y`}
                       />
+                      {(node.needs ?? []).length > 0 && (
+                        <label className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] cursor-pointer mt-2">
+                          <input
+                            type="checkbox"
+                            checked={node.injectUpstream ?? true}
+                            onChange={(e) => updateNode(selectedNode!, { injectUpstream: e.target.checked })}
+                            className="accent-[var(--color-blue)]"
+                          />
+                          {t('flows.injectUpstream')}
+                        </label>
+                      )}
                     </div>
                   )}
                 </>

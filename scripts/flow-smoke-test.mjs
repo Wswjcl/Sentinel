@@ -430,6 +430,62 @@ const neither = validateFlow({ name: 'neither-flow', version: 1, nodes: { a: { t
 check('T17 neither task nor prompt rejected', !neither.valid && neither.errors.some((e) => e.includes('requires a task reference or an inline prompt')), JSON.stringify(neither.errors))
 check('T17 lenient allows neither (draft)', validateFlow({ name: 'neither-flow', version: 1, nodes: { a: { type: 'ai' } } }, { lenient: true }).valid)
 
+// ── Test 18: automatic upstream context injection for ai nodes ──
+// ai nodes receive their direct dependencies' results appended to the
+// prompt (output on success, error on failed upstream reached via
+// onFailure: continue); injectUpstream: false opts out.
+const ctxCalls = []
+const ctxEngine = new FlowEngine({
+  flowStore: new FlowStore({ flowsDir }),
+  taskStore: new TaskStore({ tasksDir }),
+  concurrency: 3,
+  executeOverride: async (options) => {
+    ctxCalls.push(options.config.execution.prompt)
+    return {
+      record: {
+        id: randomUUID(), taskName: options.config.name,
+        startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
+        status: 'success', exitCode: 0,
+      },
+      stdout: '', stderr: '',
+      summary: 'CTX-OK',
+    }
+  },
+  onLog: () => {},
+})
+await writeFlow('ctx-flow', `
+name: ctx-flow
+version: 1
+nodes:
+  a:
+    type: script
+    run: "echo alpha"
+  b:
+    type: script
+    run: "exit 2"
+    onFailure: continue
+  ai:
+    type: ai
+    promptTemplate: "write the report"
+    needs: [a, b]
+  optout:
+    type: ai
+    promptTemplate: "no context please"
+    injectUpstream: false
+    needs: [a]
+`)
+const r18 = await ctxEngine.run('ctx-flow')
+const aiPrompt = ctxCalls.find((p) => p.startsWith('write the report'))
+const optPrompt = ctxCalls.find((p) => p === 'no context please')
+check('T18 both ai nodes succeeded', r18.nodes.ai.status === 'success' && r18.nodes.optout.status === 'success',
+  `${JSON.stringify(r18.nodes.ai)} ${JSON.stringify(r18.nodes.optout)}`)
+check('T18 upstream outputs auto-appended', aiPrompt !== undefined && aiPrompt.includes('alpha') && aiPrompt.includes('<upstream_results>') && aiPrompt.includes('node="a"'),
+  aiPrompt)
+check('T18 failed upstream error included', aiPrompt !== undefined && aiPrompt.includes('node="b"') && aiPrompt.includes('error:') && aiPrompt.includes('code 2'),
+  aiPrompt)
+check('T18 original prompt still leads', aiPrompt !== undefined && aiPrompt.startsWith('write the report\n\n'), JSON.stringify(aiPrompt?.slice(0, 40)))
+check('T18 injectUpstream false opts out', optPrompt === 'no context please', optPrompt)
+
 // cleanup
 await fs.rm(tmp, { recursive: true, force: true })
 console.log(failures === 0 ? '\n=== ALL SMOKE TESTS PASSED ===' : `\n=== ${failures} TEST(S) FAILED ===`)
