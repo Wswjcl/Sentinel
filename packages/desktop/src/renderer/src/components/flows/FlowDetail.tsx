@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ArrowLeft, Play, Plus, Trash2, Save, RotateCcw, Check, X, Download, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, Play, Plus, Trash2, Save, RotateCcw, Check, X, Download, ShieldAlert, Copy } from 'lucide-react'
 import type { FlowConfig, FlowNode, FlowNodeStatus, FlowNodeRun, FlowRun } from '@sentinel/core'
 import { edgeTarget, edgeCondition } from '../../lib/flow-edges'
+import { copyToClipboard } from '../../lib/clipboard'
 import type { FlowInfo } from '../../../../shared/ipc-types'
 import { useI18n } from '../../hooks/useI18n'
 import FlowCanvas from './FlowCanvas'
@@ -29,6 +30,8 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
   const [gates, setGates] = useState<{ runId: string; node: string; message?: string }[]>([])
   const [gateNotes, setGateNotes] = useState<Record<string, string>>({})
   const [inspect, setInspect] = useState<{ runId: string; node: string } | null>(null)
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const copiedTimer = useRef<number | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -51,6 +54,17 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
 
   useEffect(() => () => {
     if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current)
+    if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+  }, [])
+
+  /** Copy an inspector field and flash a confirmation on its button. */
+  const copyField = useCallback((key: string, text: string) => {
+    void copyToClipboard(text).then((ok) => {
+      if (!ok) return
+      setCopiedKey(key)
+      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+      copiedTimer.current = window.setTimeout(() => setCopiedKey(null), 1500)
+    })
   }, [])
 
   useEffect(() => {
@@ -295,13 +309,41 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
         )}
         {nr.error && (
           <div>
-            <div className="text-xs font-medium text-[var(--color-red)] mb-1">{t('flows.errorLabel')}</div>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-xs font-medium text-[var(--color-red)]">{t('flows.errorLabel')}</div>
+              <button
+                type="button"
+                onClick={() => copyField(`${run.id}::${nr.node}::error`, nr.error!)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-colors
+                           text-[var(--color-text-dim)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover)]"
+                title={t('flows.copy')}
+              >
+                {copiedKey === `${run.id}::${nr.node}::error`
+                  ? <><Check className="w-3 h-3" />{t('flows.copied')}</>
+                  : <><Copy className="w-3 h-3" />{t('flows.copy')}</>}
+              </button>
+            </div>
             <pre className="text-xs text-[var(--color-red)] bg-[var(--color-red)]/10 rounded-lg p-2
                            whitespace-pre-wrap break-all max-h-40 overflow-auto font-mono">{nr.error}</pre>
           </div>
         )}
         <div>
-          <div className="text-xs font-medium text-[var(--color-text-muted)] mb-1">{t('flows.outputLabel')}</div>
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-xs font-medium text-[var(--color-text-muted)]">{t('flows.outputLabel')}</div>
+            {nr.output && (
+              <button
+                type="button"
+                onClick={() => copyField(`${run.id}::${nr.node}::output`, nr.output!)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-colors
+                           text-[var(--color-text-dim)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover)]"
+                title={t('flows.copy')}
+              >
+                {copiedKey === `${run.id}::${nr.node}::output`
+                  ? <><Check className="w-3 h-3" />{t('flows.copied')}</>
+                  : <><Copy className="w-3 h-3" />{t('flows.copy')}</>}
+              </button>
+            )}
+          </div>
           {nr.output ? (
             <pre className="text-xs text-[var(--color-text)] bg-[var(--color-hover)] rounded-lg p-2
                            whitespace-pre-wrap break-words max-h-64 overflow-auto font-mono">{nr.output}</pre>

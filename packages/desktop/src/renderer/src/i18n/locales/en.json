@@ -235,7 +235,9 @@
       "budget-exhausted": "budget exhausted"
     },
     "injectUpstream": "Auto-attach upstream results as context",
-    "injectUpstreamHint": "Appends direct dependencies' outputs (errors when failed) to the prompt - no {node.output} placeholders needed"
+    "injectUpstreamHint": "Appends direct dependencies' outputs (errors when failed) to the prompt - no {node.output} placeholders needed",
+    "copy": "Copy",
+    "copied": "Copied"
   },
   "scheduler": {
     "title": "Scheduler",
