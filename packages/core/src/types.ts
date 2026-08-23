@@ -196,6 +196,9 @@ export interface ManualFlowNode extends FlowNodeBase {
   aiTakeover?: boolean
   /** Prompt used when the AI takes over (runs in the flow directory). */
   takeoverPrompt?: string
+  /** Instructions shown to the human when the gate opens (what to check
+   *  before approving). */
+  gatePrompt?: string
 }
 
 export type FlowNode = AIFlowNode | ScriptFlowNode | ManualFlowNode
@@ -214,13 +217,18 @@ export interface FlowConfig {
   nodes: Record<string, FlowNode>
 }
 
-export type FlowNodeStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped'
+/** Node lifecycle: pending -> running -> success/failed/skipped.
+ *  'waiting' is the extra manual-gate state: the node has started but is
+ *  blocked on a human decision (approve/reject) before it settles. */
+export type FlowNodeStatus = 'pending' | 'running' | 'waiting' | 'success' | 'failed' | 'skipped'
 
 export interface FlowNodeRun {
   node: string
   type: FlowNodeType
   status: FlowNodeStatus
   startedAt?: string
+  /** When a manual gate entered 'waiting' (approval pending). */
+  waitingSince?: string
   finishedAt?: string
   /** Output passed to downstream nodes (truncated stdout). */
   output?: string

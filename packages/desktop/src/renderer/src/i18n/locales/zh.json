@@ -201,7 +201,18 @@
       "failed": "失败",
       "partial": "部分成功",
       "running": "运行中"
-    }
+    },
+    "import": "导入",
+    "importDesc": "从 YAML 文件导入流程定义（重名自动改名）",
+    "export": "导出",
+    "manualGateTitle": "人工审批",
+    "approve": "通过",
+    "reject": "拒绝",
+    "gateNotePlaceholder": "备注（可选）：通过时作为下游输入，拒绝时作为失败原因",
+    "gateRunId": "运行 {{id}}",
+    "gateGone": "该审批已被处理（或流程已结束）",
+    "nodeGatePrompt": "审批提示语",
+    "gatePromptPlaceholder": "审批卡片上展示的检查要点..."
   },
   "scheduler": {
     "title": "调度器",

@@ -131,6 +131,19 @@ export interface FlowRunOptions {
   resumeFromRunId?: string
 }
 
+/** Human decision on a manual gate. */
+export interface ManualGateDecision {
+  approved: boolean
+  /** Reviewer note; becomes the node output (injected downstream) when
+   *  approved, or the failure reason when rejected. */
+  note?: string
+}
+
+/** Internal gate settlement: either a human decision or an engine-side
+ *  cancellation (budget guard) - the canceller has already settled the
+ *  node record when it resolves with this. */
+type GateSettlement = ManualGateDecision | { cancelled: 'budget-exhausted' }
+
 /**
  * DAG execution engine: runs a flow's nodes in dependency order,
  * launching dependency-free nodes in parallel (bounded by the flow's
@@ -144,6 +157,8 @@ export class FlowEngine {
   private concurrency: number
   private executeOverride?: (options: ExecutorOptions) => Promise<ExecutionResult>
   private onLog?: (level: string, msg: string) => void
+  /** Open manual gates: `${flowName}::${runId}::${node}` -> settle fn. */
+  private manualGates = new Map<string, (s: GateSettlement) => void>()
 
   constructor(options: FlowEngineOptions) {
     this.flowStore = options.flowStore
@@ -217,6 +232,14 @@ export class FlowEngine {
             nr.status = 'skipped'
             nr.skipReason = 'budget-exhausted'
             nr.finishedAt = new Date().toISOString()
+          } else if (nr.status === 'waiting') {
+            // Settle the node record here so the finalized run below sees
+            // the skipped state; the gate's executeNode continuation then
+            // returns without writing.
+            nr.status = 'skipped'
+            nr.skipReason = 'budget-exhausted'
+            nr.finishedAt = new Date().toISOString()
+            this.settleGate(flowName, run.id, nr.node, { cancelled: 'budget-exhausted' })
           }
         }
         await this.flowStore.saveRun(flowName, run)
@@ -358,23 +381,25 @@ export class FlowEngine {
   ): Promise<void> {
     const node = config.nodes[name]
     const nr = run.nodes[name]
+    let output: string
     try {
       if (node.type === 'manual' && !node.aiTakeover) {
-        // Unattended manual gate without AI takeover - skip rather than
-        // block the flow forever.
-        nr.status = 'skipped'
-        nr.skipReason = 'manual-gate'
-        nr.finishedAt = new Date().toISOString()
-        this.log('warn', `Node ${name} (manual) skipped - no aiTakeover configured`)
-        return
-      }
-
-      let output: string
-      if (node.type === 'script') {
-        output = await this.runScriptNode(flowName, run, node)
+        // Human gate: block this branch of the flow until someone
+        // approves or rejects it (desktop shows an approval card).
+        const settlement = await this.openManualGate(flowName, run, name, node)
+        if ('cancelled' in settlement) {
+          // Engine-side cancellation already settled the node record
+          return
+        }
+        if (!settlement.approved) {
+          throw new Error(settlement.note?.trim() || 'manual gate rejected')
+        }
+        output = settlement.note?.trim() || 'approved'
       } else {
-        // 'ai' nodes, plus 'manual' nodes with aiTakeover
-        output = await this.runAiNode(flowName, config, run, name, node.type === 'ai' ? node : undefined)      }
+        output = node.type === 'script'
+          ? await this.runScriptNode(flowName, run, node)
+          : await this.runAiNode(flowName, config, run, name, node.type === 'ai' ? node : undefined)
+      }
       nr.status = 'success'
       nr.output = output.slice(-8000)
     } catch (err) {
@@ -387,6 +412,59 @@ export class FlowEngine {
       name: flowName, runId: run.id, node: name, status: nr.status,
     })
     await this.flowStore.saveRun(flowName, run)
+  }
+
+  /** Register a manual gate and resolve once a human decides (or the
+   *  engine cancels it). The node enters 'waiting' and the run is
+   *  persisted before the promise suspends. */
+  private openManualGate(
+    flowName: string,
+    run: FlowRun,
+    name: string,
+    node: ManualFlowNode,
+  ): Promise<GateSettlement> {
+    return new Promise<GateSettlement>((resolveGate) => {
+      this.manualGates.set(`${flowName}::${run.id}::${name}`, resolveGate)
+
+      const nr = run.nodes[name]
+      nr.status = 'waiting'
+      nr.waitingSince = new Date().toISOString()
+      sentinelEvents.emit('flow:node-status-changed', {
+        name: flowName, runId: run.id, node: name, status: 'waiting',
+      })
+      sentinelEvents.emit('flow:manual-gate', {
+        name: flowName, runId: run.id, node: name, message: node.gatePrompt,
+      })
+      this.log('info', `Node ${name} (manual) waiting for human decision`)
+      void this.flowStore.saveRun(flowName, run)
+    })
+  }
+
+  /** Resolve (or drop) a gate entry; no-op when already settled. */
+  private settleGate(
+    flowName: string,
+    runId: string,
+    node: string,
+    settlement: GateSettlement,
+  ): boolean {
+    const key = `${flowName}::${runId}::${node}`
+    const settle = this.manualGates.get(key)
+    if (!settle) return false
+    this.manualGates.delete(key)
+    settle(settlement)
+    return true
+  }
+
+  /** Resolve a waiting manual gate with a human decision (approve /
+   *  reject, optional note). Returns false when no live gate matches
+   *  (unknown node, run already settled or cancelled). */
+  resolveManualNode(
+    flowName: string,
+    runId: string,
+    node: string,
+    decision: ManualGateDecision,
+  ): boolean {
+    return this.settleGate(flowName, runId, node, decision)
   }
 
   /** Resolve {node.output} and {inputs.key} placeholders. Upstream

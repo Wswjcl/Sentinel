@@ -537,12 +537,14 @@ type FlowEdge = string | { node: string; on?: 'success' | 'failure' | 'finished'
 | 终态判定 | `blocked ? 'failed' : anyFailed ? 'partial' : 'success'`；预算耗尽 = failed |
 | 断点恢复 | `resumeFromRunId` 复用上次成功节点（保持 finishedAt 不变），只重跑失败/跳过部分 |
 | 克隆 | `cloneFlow` 复制整个 Flow 目录、清空运行历史、自动改名 |
+| 人工门禁 | manual 节点进入 `waiting` 挂起整条分支，等 `resolveManualNode` 决议（v3.1.0 前为直接跳过） |
+| 导入/导出 | 流程定义以 YAML 文件导入导出；导入时校验 + 重名自动加后缀，运行历史与任务工作区不随文件携带 |
 
 ### 节点类型
 
 - **ai** — 引用已有任务工作区执行，支持 `{node.output}`（上游输出注入）与 `{inputs.key}`（运行时输入）占位符
 - **script** — 目录内 shell 命令，带超时与 cwd
-- **manual** — 人工门禁；未开启 `aiTakeover` 时自动跳过（skipReason: manual-gate），流程继续
+- **manual** — 人工门禁；未开启 `aiTakeover` 时进入 `waiting` 真正阻塞等待人工决议：通过（备注作为 `{node.output}` 注入下游，缺省 'approved'）或拒绝（节点失败，备注为失败原因）。`gatePrompt` 是展示给审批人的检查要点；`maxTotalSeconds` 预算耗尽时等待中的门禁被取消（skipped: budget-exhausted）；桌面端提供审批卡片 + 系统通知，同一流程同时只允许一个运行（含等待审批期间）
 
 ---
 

@@ -75,6 +75,7 @@ function layoutNodes(config: FlowConfig): Layout {
 function statusColor(status?: FlowNodeStatus): string {
   switch (status) {
     case 'running': return 'var(--color-blue)'
+    case 'waiting': return 'var(--color-yellow, #eab308)'
     case 'success': return 'var(--color-green)'
     case 'failed': return 'var(--color-red)'
     case 'skipped': return 'var(--color-text-dim)'

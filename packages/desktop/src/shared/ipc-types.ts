@@ -1,6 +1,6 @@
 import type {
   TaskConfig, TaskInfo, TaskRunRecord, TaskStatus, AgentLoopConfig,
-  FlowConfig, FlowRun, FlowNodeStatus,
+  FlowConfig, FlowRun, FlowNodeStatus, ManualGateDecision,
 } from '@sentinel/core'
 
 // ─── IPC Channel Names (single source of truth) ────────────────────
@@ -34,6 +34,9 @@ export const IPC = {
   FLOWS_RUN: 'flows:run',
   FLOWS_VALIDATE: 'flows:validate',
   FLOWS_CLONE: 'flows:clone',
+  FLOWS_EXPORT: 'flows:export',
+  FLOWS_IMPORT: 'flows:import',
+  FLOW_MANUAL_RESOLVE: 'flows:manual-resolve',
 
   // Scheduler
   SCHEDULER_START: 'scheduler:start',
@@ -132,6 +135,8 @@ export interface FlowInfo {
 export type FlowEventData =
   | { event: 'started'; name: string; runId: string }
   | { event: 'node-status-changed'; name: string; runId: string; node: string; status: FlowNodeStatus }
+  /** A manual gate opened - the UI shows an approve/reject card. */
+  | { event: 'manual-gate'; name: string; runId: string; node: string; message?: string }
   | { event: 'completed'; name: string; runId: string; success: boolean }
 
 // ─── Serve runtime (R3) ─────────────────────────────────────────────
@@ -185,6 +190,18 @@ export interface ExposedAPI {
   runFlow(name: string, inputs?: Record<string, string>, resumeRunId?: string): Promise<{ ok: boolean }>
   cloneFlow(name: string, newName?: string): Promise<{ ok: boolean; name: string }>
   validateFlowConfig(config: FlowConfig): Promise<{ valid: boolean; errors: string[] }>
+  /** Save a flow definition to a YAML file (native save dialog). */
+  exportFlow(name: string): Promise<{ ok: boolean; path?: string }>
+  /** Import a flow definition from a YAML/JSON file (native open dialog,
+   *  auto-renames on name collision). Returns the stored flow name. */
+  importFlow(): Promise<{ ok: boolean; name?: string }>
+  /** Approve/reject a waiting manual gate. */
+  resolveManualGate(
+    name: string,
+    runId: string,
+    node: string,
+    decision: ManualGateDecision,
+  ): Promise<{ ok: boolean }>
 
   // Scheduler
   startScheduler(): Promise<{ ok: boolean }>

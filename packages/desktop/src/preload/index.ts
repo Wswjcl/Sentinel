@@ -32,6 +32,9 @@ const api: ExposedAPI = {
   runFlow: (name, inputs, resumeRunId) => ipcRenderer.invoke(IPC.FLOWS_RUN, name, inputs, resumeRunId),
   cloneFlow: (name, newName) => ipcRenderer.invoke(IPC.FLOWS_CLONE, name, newName),
   validateFlowConfig: (config) => ipcRenderer.invoke(IPC.FLOWS_VALIDATE, config),
+  exportFlow: (name) => ipcRenderer.invoke(IPC.FLOWS_EXPORT, name),
+  importFlow: () => ipcRenderer.invoke(IPC.FLOWS_IMPORT),
+  resolveManualGate: (name, runId, node, decision) => ipcRenderer.invoke(IPC.FLOW_MANUAL_RESOLVE, name, runId, node, decision),
 
   // ── Scheduler ──
   startScheduler: () => ipcRenderer.invoke(IPC.SCHEDULER_START),

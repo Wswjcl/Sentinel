@@ -26,6 +26,18 @@ const engine = new FlowEngine({
   concurrency: 3,
   onLog: () => {},
 })
+const store = new FlowStore({ flowsDir })
+/** Poll the persisted latest run until predicate holds (manual gates
+ *  suspend the engine promise, so tests observe via the store). */
+const waitFor = async (flowName, predicate, timeoutMs = 5000) => {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const runs = await store.getRuns(flowName)
+    if (runs.length > 0 && predicate(runs[runs.length - 1])) return runs[runs.length - 1]
+    await new Promise((r) => setTimeout(r, 25))
+  }
+  throw new Error('waitFor timeout')
+}
 
 // ── Test 1: parallel nodes + output injection ──
 await writeFlow('parallel-flow', `
@@ -121,7 +133,7 @@ const unknown = validateFlow({
 })
 check('T5 unknown dep detected', !unknown.valid && unknown.errors.some((e) => e.includes('unknown node')), JSON.stringify(unknown.errors))
 
-// ── Test 6: manual gate without aiTakeover is skipped, flow succeeds ──
+// ── Test 6: manual gate waits for a human decision (default approve) ──
 await writeFlow('manual-flow', `
 name: manual-flow
 version: 1
@@ -133,12 +145,16 @@ nodes:
     type: manual
     needs: [a]
 `)
-const r6 = await engine.run('manual-flow')
-check('T6 manual gate skipped', r6.nodes.gate.status === 'skipped' && r6.nodes.gate.skipReason === 'manual-gate', JSON.stringify(r6.nodes.gate))
-check('T6 flow still success', r6.status === 'success', `status=${r6.status}`)
+const r6Promise = engine.run('manual-flow')
+const r6waiting = await waitFor('manual-flow', (r) => r.nodes.gate.status === 'waiting')
+check('T6 gate enters waiting', r6waiting.nodes.gate.status === 'waiting', JSON.stringify(r6waiting.nodes.gate))
+check('T6 upstream finished while gate waits', r6waiting.nodes.a.status === 'success')
+engine.resolveManualNode('manual-flow', r6waiting.id, 'gate', { approved: true })
+const r6 = await r6Promise
+check('T6 gate approved with default output', r6.nodes.gate.status === 'success' && r6.nodes.gate.output === 'approved', JSON.stringify(r6.nodes.gate))
+check('T6 flow success', r6.status === 'success', `status=${r6.status}`)
 
 // ── Test 7: run persistence ──
-const store = new FlowStore({ flowsDir })
 const runs = await store.getRuns('parallel-flow')
 check('T7 runs persisted', runs.length === 1 && runs[0].status === 'success', `runs=${runs.length}`)
 
@@ -280,6 +296,70 @@ check('T12 prompt template resolved', overrideCalls[0]?.prompt === 'do 42', over
 check('T12 node succeeded via override', r12.nodes.ai1.status === 'success', JSON.stringify(r12.nodes.ai1))
 check('T12 audit record id from override', typeof r12.nodes.ai1.taskRecordId === 'string' && r12.nodes.ai1.taskRecordId.length > 10, JSON.stringify(r12.nodes.ai1.taskRecordId))
 check('T12 downstream injection uses summary', (r12.nodes.consumer.output ?? '').includes('OVERRIDE-OUTPUT') && !(r12.nodes.consumer.output ?? '').includes('RAW-JSON-BLOB'), r12.nodes.consumer.output)
+
+// ── Test 13: manual gate blocks until a human approves ──
+await writeFlow('gate-flow', `
+name: gate-flow
+version: 1
+nodes:
+  gate:
+    type: manual
+    gatePrompt: "Check the report before continuing"
+  done:
+    type: script
+    run: "echo after:{gate.output}"
+    needs: [gate]
+`)
+const r13Promise = engine.run('gate-flow')
+const r13waiting = await waitFor('gate-flow', (r) => r.nodes.gate.status === 'waiting')
+check('T13 gate enters waiting (not skipped)', r13waiting.nodes.gate.status === 'waiting', JSON.stringify(r13waiting.nodes.gate))
+check('T13 downstream stays pending while waiting', r13waiting.nodes.done.status === 'pending')
+check('T13 flow still running while waiting', r13waiting.status === 'running')
+check('T13 waitingSince recorded', typeof r13waiting.nodes.gate.waitingSince === 'string')
+check('T13 approve resolves live gate', engine.resolveManualNode('gate-flow', r13waiting.id, 'gate', { approved: true, note: 'looks good' }) === true)
+const r13 = await r13Promise
+check('T13 gate approved -> success with note as output', r13.nodes.gate.status === 'success' && r13.nodes.gate.output === 'looks good', JSON.stringify(r13.nodes.gate))
+check('T13 note injected downstream', (r13.nodes.done.output ?? '').includes('after:looks good'), r13.nodes.done.output)
+check('T13 flow success', r13.status === 'success', `status=${r13.status}`)
+check('T13 second resolve returns false', engine.resolveManualNode('gate-flow', r13.id, 'gate', { approved: true }) === false)
+
+// ── Test 14: rejected gate fails the node and blocks downstream ──
+await writeFlow('gate-reject-flow', `
+name: gate-reject-flow
+version: 1
+nodes:
+  gate:
+    type: manual
+  done:
+    type: script
+    run: "echo no"
+    needs: [gate]
+`)
+const r14Promise = engine.run('gate-reject-flow')
+const r14waiting = await waitFor('gate-reject-flow', (r) => r.nodes.gate.status === 'waiting')
+engine.resolveManualNode('gate-reject-flow', r14waiting.id, 'gate', { approved: false, note: 'not good enough' })
+const r14 = await r14Promise
+check('T14 gate rejected -> failed with note as error', r14.nodes.gate.status === 'failed' && (r14.nodes.gate.error ?? '').includes('not good enough'), JSON.stringify(r14.nodes.gate))
+check('T14 downstream skipped (upstream-failure)', r14.nodes.done.status === 'skipped' && r14.nodes.done.skipReason === 'upstream-failure', JSON.stringify(r14.nodes.done))
+check('T14 flow failed', r14.status === 'failed', `status=${r14.status}`)
+
+// ── Test 15: budget guard cancels a waiting gate ──
+await writeFlow('gate-budget-flow', `
+name: gate-budget-flow
+version: 1
+maxTotalSeconds: 1
+nodes:
+  slow:
+    type: script
+    run: "node -e \\"setTimeout(()=>{}, 1500)\\""
+  gate:
+    type: manual
+`)
+const r15Promise = engine.run('gate-budget-flow')
+const r15 = await r15Promise
+check('T15 budget cancels waiting gate', r15.nodes.gate.status === 'skipped' && r15.nodes.gate.skipReason === 'budget-exhausted', JSON.stringify(r15.nodes.gate))
+check('T15 flow failed on budget', r15.status === 'failed', `status=${r15.status}`)
+check('T15 cancelled gate no longer resolvable', engine.resolveManualNode('gate-budget-flow', r15.id, 'gate', { approved: true }) === false)
 
 // cleanup
 await fs.rm(tmp, { recursive: true, force: true })

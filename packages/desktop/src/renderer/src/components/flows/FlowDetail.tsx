@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ArrowLeft, Play, Plus, Trash2, Save, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Play, Plus, Trash2, Save, RotateCcw, Check, X, Download, ShieldAlert } from 'lucide-react'
 import type { FlowConfig, FlowNode, FlowNodeStatus, FlowRun } from '@sentinel/core'
 import { edgeTarget, edgeCondition } from '../../lib/flow-edges'
 import type { FlowInfo } from '../../../../shared/ipc-types'
@@ -26,6 +26,8 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
   const [newNodeName, setNewNodeName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [gates, setGates] = useState<{ runId: string; node: string; message?: string }[]>([])
+  const [gateNotes, setGateNotes] = useState<Record<string, string>>({})
 
   const refresh = useCallback(async () => {
     try {
@@ -39,16 +41,48 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
     refresh()
   }, [refresh])
 
+  // Seed live state from persisted runs: opening the detail view after a
+  // run started (e.g. via the gate notification) must still show the
+  // running state and any gate that is already waiting.
+  useEffect(() => {
+    if (!info) return
+    const live = info.runs.filter((r) => r.status === 'running')
+    if (live.length > 0) setRunning(true)
+    for (const r of live) {
+      for (const nr of Object.values(r.nodes)) {
+        if (nr.status === 'waiting') {
+          setGates((prev) =>
+            prev.some((g) => g.runId === r.id && g.node === nr.node)
+              ? prev
+              : [...prev, { runId: r.id, node: nr.node }],
+          )
+        }
+      }
+    }
+  }, [info])
+
   useEffect(() => {
     const unsub = window.api.onFlowUpdate((data) => {
       if (data.name !== name) return
       if (data.event === 'started') {
         setLiveStatuses({})
         setRunning(true)
+        setGates([])
       } else if (data.event === 'node-status-changed') {
         setLiveStatuses((prev) => ({ ...prev, [data.node]: data.status }))
+        // Any transition out of 'waiting' settles the gate card
+        if (data.status !== 'waiting') {
+          setGates((prev) => prev.filter((g) => !(g.runId === data.runId && g.node === data.node)))
+        }
+      } else if (data.event === 'manual-gate') {
+        setGates((prev) =>
+          prev.some((g) => g.runId === data.runId && g.node === data.node)
+            ? prev
+            : [...prev, { runId: data.runId, node: data.node, message: data.message }],
+        )
       } else if (data.event === 'completed') {
         setRunning(false)
+        setGates([])
         refresh()
       }
     })
@@ -152,6 +186,27 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
   }
 
   const lastRuns = info.runs.slice(-5).reverse()
+
+  const respondGate = async (runId: string, node: string, approved: boolean) => {
+    const note = gateNotes[`${runId}::${node}`]?.trim() || undefined
+    setGates((prev) => prev.filter((g) => !(g.runId === runId && g.node === node)))
+    try {
+      const res = await window.api.resolveManualGate(name, runId, node, { approved, note })
+      if (!res.ok) setError(t('flows.gateGone'))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const exportCurrent = async () => {
+    setError(null)
+    try {
+      await window.api.exportFlow(name)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   const statusBadge = (s: string) => {
     const cls =
       s === 'success' ? 'text-[var(--color-green)]' :
@@ -187,6 +242,14 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                      focus:outline-none focus:border-[var(--color-blue)] transition-colors"
         />
         <button
+          onClick={() => void exportCurrent()}
+          className="p-2 rounded-lg bg-[var(--color-hover)] border border-[var(--color-border)]
+                     text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+          title={t('flows.export')}
+        >
+          <Download className="w-4 h-4" />
+        </button>
+        <button
           onClick={() => void runFlow()}
           disabled={running}
           className="flex items-center gap-1.5 px-4 py-1.5 bg-[var(--color-green)] text-[var(--color-bg)] rounded-lg
@@ -198,8 +261,61 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
       </div>
 
       <div className="flex gap-4 items-start">
-        {/* Left: canvas + run history */}
+        {/* Left: gate cards + canvas + run history */}
         <div className="flex-1 min-w-0 space-y-4">
+          {/* Manual gate approval cards (a run may open several in a row) */}
+          {gates.map((gate) => {
+            const key = `${gate.runId}::${gate.node}`
+            return (
+              <div
+                key={key}
+                className="rounded-lg border border-[var(--color-yellow, #eab308)] bg-[var(--color-card)] p-3"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <ShieldAlert className="w-4 h-4 text-[var(--color-yellow, #eab308)]" />
+                  <span className="text-sm font-medium text-[var(--color-text-bright)]">
+                    {t('flows.manualGateTitle')}
+                  </span>
+                  <span className="font-mono text-xs text-[var(--color-text-muted)]">{gate.node}</span>
+                  <span className="text-xs text-[var(--color-text-dim)]">
+                    {t('flows.gateRunId', { id: gate.runId.slice(0, 8) })}
+                  </span>
+                </div>
+                {gate.message && (
+                  <p className="text-xs text-[var(--color-text-muted)] mb-2 whitespace-pre-wrap">
+                    {gate.message}
+                  </p>
+                )}
+                <textarea
+                  value={gateNotes[key] ?? ''}
+                  onChange={(e) => setGateNotes((prev) => ({ ...prev, [key]: e.target.value }))}
+                  rows={2}
+                  placeholder={t('flows.gateNotePlaceholder')}
+                  className={`${inputCls} resize-y mb-2`}
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => void respondGate(gate.runId, gate.node, false)}
+                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium
+                               border border-[var(--color-red)] text-[var(--color-red)]
+                               hover:bg-[var(--color-red)]/10 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    {t('flows.reject')}
+                  </button>
+                  <button
+                    onClick={() => void respondGate(gate.runId, gate.node, true)}
+                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium
+                               bg-[var(--color-green)] text-[var(--color-bg)] hover:opacity-90 transition-opacity"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    {t('flows.approve')}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+
           <FlowCanvas
             config={config}
             statuses={liveStatuses}
@@ -249,10 +365,11 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                             nr.status === 'success' ? 'text-[var(--color-green)]' :
                             nr.status === 'failed' ? 'text-[var(--color-red)]' :
                             nr.status === 'running' ? 'text-[var(--color-blue)]' :
+                            nr.status === 'waiting' ? 'text-[var(--color-yellow, #eab308)]' :
                             'text-[var(--color-text-dim)]'
                           }`}
                         >
-                          {nr.status === 'success' ? '✓' : nr.status === 'failed' ? '✗' : nr.status === 'running' ? '◉' : '⏭'} {nr.node}
+                          {nr.status === 'success' ? '✓' : nr.status === 'failed' ? '✗' : nr.status === 'running' ? '◉' : nr.status === 'waiting' ? '⏸' : '⏭'} {nr.node}
                         </span>
                       ))}
                     </div>
@@ -393,6 +510,18 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
 
               {node.type === 'manual' && (
                 <>
+                  {!node.aiTakeover && (
+                    <div>
+                      <label className={labelCls}>{t('flows.nodeGatePrompt')}</label>
+                      <textarea
+                        defaultValue={node.gatePrompt}
+                        onBlur={(e) => updateNode(selectedNode!, { gatePrompt: e.target.value || undefined })}
+                        rows={2}
+                        className={`${inputCls} resize-y`}
+                        placeholder={t('flows.gatePromptPlaceholder')}
+                      />
+                    </div>
+                  )}
                   <label className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] cursor-pointer">
                     <input
                       type="checkbox"

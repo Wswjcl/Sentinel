@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, Workflow, Clock, Copy } from 'lucide-react'
+import { Plus, Trash2, Workflow, Clock, Copy, Upload, Download } from 'lucide-react'
 import { useI18n } from '../../hooks/useI18n'
 import { useFlows } from '../../hooks/useFlows'
 import FlowDetail from './FlowDetail'
@@ -117,6 +117,7 @@ export default function FlowsPanel() {
   const { flows, loading, refresh } = useFlows()
   const [selected, setSelected] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   if (selected) {
     return <FlowDetail name={selected} onBack={() => { setSelected(null); refresh() }} />
@@ -148,6 +149,25 @@ export default function FlowsPanel() {
     }
   }
 
+  const exportOne = async (name: string) => {
+    setActionError(null)
+    try {
+      await window.api.exportFlow(name)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const importOne = async () => {
+    setActionError(null)
+    try {
+      const res = await window.api.importFlow()
+      if (res.ok && res.name) setSelected(res.name)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -155,15 +175,33 @@ export default function FlowsPanel() {
           <h1 className="text-xl font-semibold text-[var(--color-text-bright)]">{t('flows.title')}</h1>
           <p className="text-sm text-[var(--color-text-muted)] mt-1">{t('flows.titleDesc')}</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 px-4 py-1.5 bg-[var(--color-green)] text-[var(--color-bg)]
-                     rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
-        >
-          <Plus className="w-4 h-4" />
-          {t('flows.newFlow')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void importOne()}
+            className="flex items-center gap-1.5 px-4 py-1.5 border border-[var(--color-border)]
+                       rounded-lg text-sm font-medium text-[var(--color-text)]
+                       hover:border-[var(--color-blue)] hover:text-[var(--color-blue)] transition-colors"
+            title={t('flows.importDesc')}
+          >
+            <Upload className="w-4 h-4" />
+            {t('flows.import')}
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-[var(--color-green)] text-[var(--color-bg)]
+                       rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            <Plus className="w-4 h-4" />
+            {t('flows.newFlow')}
+          </button>
+        </div>
       </div>
+
+      {actionError && (
+        <div className="mb-4 text-xs text-[var(--color-red)] bg-[var(--color-red)]/10 rounded-lg px-3 py-2 break-all">
+          {actionError}
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-[var(--color-text-muted)]">{t('flows.loading')}</p>
@@ -189,6 +227,14 @@ export default function FlowsPanel() {
                     <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">{f.config.description || '-'}</p>
                   </div>
                   <div className="flex gap-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); void exportOne(f.config.name) }}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-[var(--color-text-dim)]
+                                 hover:text-[var(--color-blue)] transition-all"
+                      title={t('flows.export')}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); void cloneFlow(f.config.name) }}
                       className="opacity-0 group-hover:opacity-100 p-1 rounded text-[var(--color-text-dim)]

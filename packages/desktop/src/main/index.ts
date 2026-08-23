@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage, Notification } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage, Notification, dialog } from 'electron'
 import { promises as fs } from 'node:fs'
 import { join, resolve, dirname } from 'node:path'
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
-import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult } from '@sentinel/core'
+import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult, ManualGateDecision } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
 import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, PermissionAskData, LiveEventData } from '../shared/ipc-types'
 
@@ -216,6 +217,9 @@ const flowEngine = new FlowEngine({
     sentinelEvents.emit('scheduler:log', { level, msg })
   },
 })
+/** One run per flow at a time: a waiting manual gate keeps the run
+ *  alive indefinitely and concurrent runs would race on .runs.json. */
+const flowRunLocks = new Set<string>()
 
 // ─── Window Creation ───────────────────────────────────────────────
 
@@ -333,6 +337,27 @@ function setupEventForwarding(): void {
 
   sentinelEvents.on('flow:completed', (d) => {
     forwardFlow({ event: 'completed', ...d })
+  })
+
+  sentinelEvents.on('flow:manual-gate', (d) => {
+    forwardFlow({ event: 'manual-gate', ...d })
+    // A gate can wait indefinitely - surface it out-of-band like
+    // permission asks so it isn't missed when the window is hidden.
+    try {
+      const notification = new Notification({
+        title: `Sentinel — ${d.name}`,
+        body: `人工审批：节点 "${d.node}" 等待你的决定${d.message ? `\n${d.message.slice(0, 120)}` : ''}`,
+      })
+      notification.on('click', () => {
+        if (mainWindow) {
+          mainWindow.show()
+          mainWindow.focus()
+        }
+      })
+      notification.show()
+    } catch {
+      // notifications can be unavailable - the in-app gate card still applies
+    }
   })
 }
 
@@ -731,11 +756,16 @@ function registerIpcHandlers(): void {
   ) => {
     // Verify the flow loads before firing the async run
     await flowStore.getConfig(name)
+    if (flowRunLocks.has(name)) {
+      throw new Error(`流程 "${name}" 已在运行中（含等待人工审批），请先完成当前运行`)
+    }
+    flowRunLocks.add(name)
     flowEngine
       .run(name, { inputs, resumeFromRunId: resumeRunId })
       .catch((err) => {
         sentinelEvents.emit('scheduler:log', { level: 'error', msg: `Flow ${name} error: ${String(err)}` })
       })
+      .finally(() => flowRunLocks.delete(name))
     return { ok: true }
   })
 
@@ -754,6 +784,62 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.FLOWS_VALIDATE, (_e, config: FlowConfig) => {
     return validateFlow(config)
+  })
+
+  ipcMain.handle(IPC.FLOW_MANUAL_RESOLVE, (
+    _e,
+    name: string,
+    runId: string,
+    node: string,
+    decision: ManualGateDecision,
+  ) => {
+    // false = no live gate (already settled or cancelled by budget guard)
+    return { ok: flowEngine.resolveManualNode(name, runId, node, decision) }
+  })
+
+  ipcMain.handle(IPC.FLOWS_EXPORT, async (_e, name: string) => {
+    const config = await flowStore.getConfig(name)
+    const options = {
+      title: `导出流程 ${name}`,
+      defaultPath: `${name}.yaml`,
+      filters: [{ name: 'YAML', extensions: ['yaml', 'yml'] }],
+    }
+    const result = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, options)
+      : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return { ok: false }
+    // Definition only - run history and referenced task workspaces stay local
+    await fs.writeFile(result.filePath, stringifyYaml(config), 'utf-8')
+    return { ok: true, path: result.filePath }
+  })
+
+  ipcMain.handle(IPC.FLOWS_IMPORT, async () => {
+    const options = {
+      title: '导入流程',
+      properties: ['openFile' as const],
+      filters: [{ name: 'Flow definition', extensions: ['yaml', 'yml', 'json'] }],
+    }
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || result.filePaths.length === 0) return { ok: false }
+    const raw = await fs.readFile(result.filePaths[0], 'utf-8')
+    // YAML 1.2 is a JSON superset, so .json exports parse the same way
+    const config = parseYaml(raw) as FlowConfig
+    const validation = validateFlow(config)
+    if (!validation.valid) {
+      throw new Error(`导入的文件不是有效的流程定义：${validation.errors.join('; ')}`)
+    }
+    // Collision: keep the file's definition but store under a suffixed name
+    const existing = new Set(await flowStore.listFlows())
+    let target = config.name
+    if (existing.has(target)) {
+      let i = 2
+      while (existing.has(`${config.name}-${i}`)) i++
+      target = `${config.name}-${i}`
+    }
+    await flowStore.saveConfig(target, { ...config, name: target })
+    return { ok: true, name: target }
   })
 
   // ── Scheduler ──
@@ -984,6 +1070,26 @@ app.whenReady().then(async () => {
   await loadRuntimeMode()
   await store.init()
   await flowStore.init()
+  // A quit while a flow was running (e.g. waiting on a manual gate)
+  // leaves the run stuck at 'running' with no live engine to finish
+  // it - mark those runs failed so history reflects reality.
+  for (const flowName of await flowStore.listFlows()) {
+    const runs = await flowStore.getRuns(flowName)
+    let dirty = false
+    for (const r of runs) {
+      if (r.status !== 'running') continue
+      r.status = 'failed'
+      r.finishedAt = new Date().toISOString()
+      for (const nr of Object.values(r.nodes)) {
+        if (nr.status === 'pending' || nr.status === 'running' || nr.status === 'waiting') {
+          nr.status = 'skipped'
+          nr.skipReason = 'unreachable'
+        }
+      }
+      dirty = true
+    }
+    if (dirty) await flowStore.saveRuns(flowName, runs)
+  }
   setupMenu()
   registerIpcHandlers()
   setupEventForwarding()

@@ -201,7 +201,18 @@
       "failed": "Failed",
       "partial": "Partial",
       "running": "Running"
-    }
+    },
+    "import": "Import",
+    "importDesc": "Import a flow definition from a YAML file (auto-renames on collision)",
+    "export": "Export",
+    "manualGateTitle": "Manual Approval",
+    "approve": "Approve",
+    "reject": "Reject",
+    "gateNotePlaceholder": "Note (optional): downstream input when approved, failure reason when rejected",
+    "gateRunId": "run {{id}}",
+    "gateGone": "This gate was already settled (or the run ended)",
+    "nodeGatePrompt": "Gate instructions",
+    "gatePromptPlaceholder": "What to check before approving, shown on the gate card..."
   },
   "scheduler": {
     "title": "Scheduler",

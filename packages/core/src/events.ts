@@ -17,6 +17,8 @@ export interface SentinelEventMap {
   // ── Flow Engineering events ──
   'flow:started': { name: string; runId: string }
   'flow:node-status-changed': { name: string; runId: string; node: string; status: FlowNodeStatus }
+  /** A manual gate opened and is waiting for a human decision. */
+  'flow:manual-gate': { name: string; runId: string; node: string; message?: string }
   'flow:completed': { name: string; runId: string; success: boolean }
 }
 
