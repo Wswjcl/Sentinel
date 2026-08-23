@@ -6,6 +6,10 @@ interface FlowCanvasProps {
   config: FlowConfig
   /** Live node statuses from the active run (colors the graph) */
   statuses?: Record<string, FlowNodeStatus>
+  /** A run is in progress: nodes without a live status render as
+   *  'pending' (dim dashed) instead of their editor type color, so a
+   *  restarted flow visibly resets to "not yet executed". */
+  running?: boolean
   selectedNode?: string | null
   onSelectNode?: (name: string) => void
   /** Persist a node's canvas position (called on drag release) */
@@ -78,6 +82,7 @@ function statusColor(status?: FlowNodeStatus): string {
     case 'waiting': return 'var(--color-yellow, #eab308)'
     case 'success': return 'var(--color-green)'
     case 'failed': return 'var(--color-red)'
+    case 'pending': return 'var(--color-text-dim)'
     case 'skipped': return 'var(--color-text-dim)'
     default: return 'var(--color-border)'
   }
@@ -107,7 +112,7 @@ interface DragState {
   originY: number
 }
 
-export default function FlowCanvas({ config, statuses, selectedNode, onSelectNode, onNodePosition }: FlowCanvasProps) {
+export default function FlowCanvas({ config, statuses, running, selectedNode, onSelectNode, onNodePosition }: FlowCanvasProps) {
   const nodes = config.nodes ?? {}
   const { pos, width, height } = layoutNodes(config)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -225,7 +230,10 @@ export default function FlowCanvas({ config, statuses, selectedNode, onSelectNod
         {Object.entries(nodes).map(([name, node]) => {
           const p = posOf(name)
           if (!p) return null
-          const live = statuses?.[name]
+          // During a run, nodes without a live status are pending -
+          // not "carrying over" their editor type color (green/blue
+          // read like last run's success/running)
+          const live = statuses?.[name] ?? (running ? 'pending' : undefined)
           const stroke = live ? statusColor(live) : typeColor(node.type)
           const isSelected = selectedNode === name
           return (
@@ -247,6 +255,8 @@ export default function FlowCanvas({ config, statuses, selectedNode, onSelectNod
                 fill="var(--color-card)"
                 stroke={stroke}
                 strokeWidth={isSelected || live === 'running' ? 2.5 : 1.5}
+                strokeDasharray={live === 'pending' ? '5 4' : undefined}
+                opacity={live === 'pending' ? 0.7 : 1}
               />
               <text
                 x={p.x + 12}

@@ -68,6 +68,8 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
         setLiveStatuses({})
         setRunning(true)
         setGates([])
+        // Show the new run (all nodes pending) in the history immediately
+        refresh()
       } else if (data.event === 'node-status-changed') {
         setLiveStatuses((prev) => ({ ...prev, [data.node]: data.status }))
         // Any transition out of 'waiting' settles the gate card
@@ -319,6 +321,7 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
           <FlowCanvas
             config={config}
             statuses={liveStatuses}
+            running={running}
             selectedNode={selectedNode}
             onSelectNode={setSelectedNode}
             onNodePosition={(nodeName, position) => updateNode(nodeName, { position })}
@@ -369,7 +372,7 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                             'text-[var(--color-text-dim)]'
                           }`}
                         >
-                          {nr.status === 'success' ? '✓' : nr.status === 'failed' ? '✗' : nr.status === 'running' ? '◉' : nr.status === 'waiting' ? '⏸' : '⏭'} {nr.node}
+                          {nr.status === 'success' ? '✓' : nr.status === 'failed' ? '✗' : nr.status === 'running' ? '◉' : nr.status === 'waiting' ? '⏸' : nr.status === 'pending' ? '○' : '⏭'} {nr.node}
                         </span>
                       ))}
                     </div>
