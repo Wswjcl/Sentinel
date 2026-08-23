@@ -10,7 +10,8 @@
     "scheduler": "Scheduler",
     "settings": "Settings",
     "schedulerRunning": "Scheduler: Running",
-    "schedulerOff": "Scheduler: Off"
+    "schedulerOff": "Scheduler: Off",
+    "skills": "Skills"
   },
   "status": {
     "pending": "Pending",
@@ -266,5 +267,40 @@
   "i18n": {
     "switchToEn": "Switch to English",
     "switchToZh": "切换为中文"
+  },
+  "skills": {
+    "title": "Skills Library",
+    "titleDesc": "Manage .opencode/skills across workspaces: edit, reuse across tasks/flows, import & export",
+    "loading": "Loading...",
+    "empty": "No skills yet. Create them under a workspace's .opencode/skills, or click \"New Skill\"",
+    "create": "New Skill",
+    "import": "Import",
+    "export": "Export",
+    "copy": "Copy to another workspace",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "confirm": "OK",
+    "cancel": "Cancel",
+    "name": "Skill name",
+    "nameRequired": "Skill name is required",
+    "targetRequired": "Pick a target workspace",
+    "content": "Skill content (SKILL.md)",
+    "target": "Target workspace",
+    "pickWorkspace": "Pick a workspace...",
+    "tasksGroup": "Tasks",
+    "flowsGroup": "Flows",
+    "taskBadge": "task",
+    "flowBadge": "flow",
+    "editTitle": "Edit Skill",
+    "createTitle": "New Skill",
+    "copyTitle": "Copy Skill",
+    "copySource": "Copy \"{{name}}\" (from {{workspace}}) to:",
+    "importTitle": "Import Skill",
+    "importHint": "Pick a .md file; its filename (minus extension) becomes the skill name. Fails if the target already has that skill.",
+    "deleteConfirm": "Delete skill \"{{name}}\" from workspace \"{{workspace}}\"? The skill directory (incl. supporting files) will be removed.",
+    "noDescription": "(no description)",
+    "missingFile": "SKILL.md missing",
+    "extraFiles": "supporting file(s) (included when copied)"
   }
 }

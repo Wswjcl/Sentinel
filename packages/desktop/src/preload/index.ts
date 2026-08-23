@@ -36,6 +36,14 @@ const api: ExposedAPI = {
   importFlow: () => ipcRenderer.invoke(IPC.FLOWS_IMPORT),
   resolveManualGate: (name, runId, node, decision) => ipcRenderer.invoke(IPC.FLOW_MANUAL_RESOLVE, name, runId, node, decision),
 
+  // ── Skills library ──
+  listAllSkills: () => ipcRenderer.invoke(IPC.SKILLS_LIST_ALL),
+  saveSkill: (ref, name, content) => ipcRenderer.invoke(IPC.SKILLS_SAVE, ref, name, content),
+  deleteSkill: (ref, name) => ipcRenderer.invoke(IPC.SKILLS_DELETE, ref, name),
+  copySkill: (from, to) => ipcRenderer.invoke(IPC.SKILLS_COPY, from, to),
+  exportSkill: (ref, name) => ipcRenderer.invoke(IPC.SKILLS_EXPORT, ref, name),
+  importSkill: (to) => ipcRenderer.invoke(IPC.SKILLS_IMPORT, to),
+
   // ── Scheduler ──
   startScheduler: () => ipcRenderer.invoke(IPC.SCHEDULER_START),
   stopScheduler: () => ipcRenderer.invoke(IPC.SCHEDULER_STOP),

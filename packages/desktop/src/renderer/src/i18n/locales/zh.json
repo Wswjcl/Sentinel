@@ -10,7 +10,8 @@
     "scheduler": "调度器",
     "settings": "设置",
     "schedulerRunning": "调度器: 运行中",
-    "schedulerOff": "调度器: 已停止"
+    "schedulerOff": "调度器: 已停止",
+    "skills": "技能库"
   },
   "status": {
     "pending": "等待中",
@@ -266,5 +267,40 @@
   "i18n": {
     "switchToEn": "Switch to English",
     "switchToZh": "切换为中文"
+  },
+  "skills": {
+    "title": "技能库",
+    "titleDesc": "管理所有工作区的 .opencode/skills 技能：编辑、跨任务/流程复用、导入导出",
+    "loading": "加载中...",
+    "empty": "暂无技能。在任务工作区的 .opencode/skills 下创建，或点右上角「新建技能」",
+    "create": "新建技能",
+    "import": "导入",
+    "export": "导出",
+    "copy": "复制到其他工作区",
+    "edit": "编辑",
+    "delete": "删除",
+    "save": "保存",
+    "confirm": "确定",
+    "cancel": "取消",
+    "name": "技能名",
+    "nameRequired": "技能名不能为空",
+    "targetRequired": "请选择目标工作区",
+    "content": "技能内容 (SKILL.md)",
+    "target": "目标工作区",
+    "pickWorkspace": "选择工作区...",
+    "tasksGroup": "任务",
+    "flowsGroup": "流程",
+    "taskBadge": "任务",
+    "flowBadge": "流程",
+    "editTitle": "编辑技能",
+    "createTitle": "新建技能",
+    "copyTitle": "复制技能",
+    "copySource": "将「{{name}}」（来自 {{workspace}}）复制到：",
+    "importTitle": "导入技能",
+    "importHint": "选择 .md 文件，文件名（去扩展名）将作为技能名；目标工作区已有同名技能时会报错",
+    "deleteConfirm": "确定删除工作区 \"{{workspace}}\" 中的技能 \"{{name}}\"？技能目录（含附加文件）将被移除",
+    "noDescription": "（无描述）",
+    "missingFile": "SKILL.md 缺失",
+    "extraFiles": "个附加文件（复制时会一并带走）"
   }
 }

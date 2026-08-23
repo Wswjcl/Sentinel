@@ -38,6 +38,14 @@ export const IPC = {
   FLOWS_IMPORT: 'flows:import',
   FLOW_MANUAL_RESOLVE: 'flows:manual-resolve',
 
+  // Skills library (workspaces: tasks and flows)
+  SKILLS_LIST_ALL: 'skills:list-all',
+  SKILLS_SAVE: 'skills:save',
+  SKILLS_DELETE: 'skills:delete',
+  SKILLS_COPY: 'skills:copy',
+  SKILLS_EXPORT: 'skills:export',
+  SKILLS_IMPORT: 'skills:import',
+
   // Scheduler
   SCHEDULER_START: 'scheduler:start',
   SCHEDULER_STOP: 'scheduler:stop',
@@ -139,6 +147,26 @@ export type FlowEventData =
   | { event: 'manual-gate'; name: string; runId: string; node: string; message?: string }
   | { event: 'completed'; name: string; runId: string; success: boolean }
 
+// ─── Skills library data types ──────────────────────────────────────
+
+/** Which kind of workspace a skill lives in. */
+export type SkillWorkspaceKind = 'task' | 'flow'
+
+/** Reference to a workspace that can hold skills. */
+export interface SkillWorkspaceRef {
+  kind: SkillWorkspaceKind
+  workspace: string
+}
+
+/** One skill found in a workspace's .opencode/skills directory. */
+export interface SkillEntry extends SkillWorkspaceRef {
+  name: string
+  /** SKILL.md content (null when the file is missing). */
+  content: string | null
+  /** Supporting files beside SKILL.md (scripts, references...). */
+  extraFiles: number
+}
+
 // ─── Serve runtime (R3) ─────────────────────────────────────────────
 
 export type RuntimeMode = 'cli' | 'serve'
@@ -202,6 +230,21 @@ export interface ExposedAPI {
     node: string,
     decision: ManualGateDecision,
   ): Promise<{ ok: boolean }>
+
+  // Skills library
+  listAllSkills(): Promise<SkillEntry[]>
+  /** Create or update a skill's SKILL.md in a workspace. */
+  saveSkill(ref: SkillWorkspaceRef, name: string, content: string): Promise<{ ok: boolean }>
+  /** Remove a skill directory from a workspace. */
+  deleteSkill(ref: SkillWorkspaceRef, name: string): Promise<{ ok: boolean }>
+  /** Copy a whole skill directory (incl. supporting files) to another
+   *  workspace. Fails when the target already has a skill by that name. */
+  copySkill(from: SkillWorkspaceRef & { name: string }, to: SkillWorkspaceRef): Promise<{ ok: boolean }>
+  /** Export a skill's SKILL.md via the native save dialog. */
+  exportSkill(ref: SkillWorkspaceRef, name: string): Promise<{ ok: boolean; path?: string }>
+  /** Import a skill from a .md file into a workspace (skill name =
+   *  filename stem). Fails when the workspace already has that skill. */
+  importSkill(to: SkillWorkspaceRef): Promise<{ ok: boolean; name?: string }>
 
   // Scheduler
   startScheduler(): Promise<{ ok: boolean }>

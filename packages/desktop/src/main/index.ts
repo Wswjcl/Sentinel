@@ -1,12 +1,12 @@
 import { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage, Notification, dialog } from 'electron'
 import { promises as fs } from 'node:fs'
-import { join, resolve, dirname } from 'node:path'
+import { join, resolve, dirname, basename } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
+import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
 import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult, ManualGateDecision } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
-import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, PermissionAskData, LiveEventData } from '../shared/ipc-types'
+import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, PermissionAskData, LiveEventData, SkillEntry, SkillWorkspaceKind, SkillWorkspaceRef } from '../shared/ipc-types'
 
 // ─── Globals ───────────────────────────────────────────────────────
 
@@ -840,6 +840,125 @@ function registerIpcHandlers(): void {
     }
     await flowStore.saveConfig(target, { ...config, name: target })
     return { ok: true, name: target }
+  })
+
+  // ── Skills library ──
+
+  /** Resolve a workspace's skills directory; names are validated so
+   *  every derived path stays inside a known workspace. */
+  function skillsDir(ref: SkillWorkspaceRef, skillName?: string): string {
+    if (!isValidTaskName(ref.workspace)) {
+      throw new Error(`Invalid ${ref.kind} name: ${ref.workspace}`)
+    }
+    const wsDir = ref.kind === 'task' ? store.getTaskDir(ref.workspace) : flowStore.getFlowDir(ref.workspace)
+    const dir = join(wsDir, '.opencode', 'skills')
+    if (!skillName) return dir
+    if (!isValidTaskName(skillName)) {
+      throw new Error(`Invalid skill name: ${skillName}`)
+    }
+    return join(dir, skillName)
+  }
+
+  ipcMain.handle(IPC.SKILLS_LIST_ALL, async (): Promise<SkillEntry[]> => {
+    const entries: SkillEntry[] = []
+    const scan = async (kind: SkillWorkspaceKind, workspaces: string[]): Promise<void> => {
+      for (const ws of workspaces) {
+        let dirents
+        try {
+          dirents = await fs.readdir(skillsDir({ kind, workspace: ws }), { withFileTypes: true })
+        } catch {
+          continue
+        }
+        for (const e of dirents) {
+          if (!e.isDirectory() || !isValidTaskName(e.name)) continue
+          const dir = skillsDir({ kind, workspace: ws }, e.name)
+          let content: string | null = null
+          try {
+            content = await fs.readFile(join(dir, 'SKILL.md'), 'utf-8')
+          } catch {}
+          let extraFiles = 0
+          try {
+            extraFiles = (await fs.readdir(dir)).filter((f) => f !== 'SKILL.md').length
+          } catch {}
+          entries.push({ kind, workspace: ws, name: e.name, content, extraFiles })
+        }
+      }
+    }
+    await scan('task', await store.listTasks())
+    await scan('flow', await flowStore.listFlows())
+    return entries
+  })
+
+  ipcMain.handle(IPC.SKILLS_SAVE, async (_e, ref: SkillWorkspaceRef, name: string, content: string) => {
+    const dir = skillsDir(ref, name)
+    await fs.mkdir(dir, { recursive: true })
+    await fs.writeFile(join(dir, 'SKILL.md'), content, 'utf-8')
+    return { ok: true }
+  })
+
+  ipcMain.handle(IPC.SKILLS_DELETE, async (_e, ref: SkillWorkspaceRef, name: string) => {
+    await fs.rm(skillsDir(ref, name), { recursive: true, force: true })
+    return { ok: true }
+  })
+
+  ipcMain.handle(IPC.SKILLS_COPY, async (
+    _e,
+    from: SkillWorkspaceRef & { name: string },
+    to: SkillWorkspaceRef,
+  ) => {
+    const target = skillsDir(to, from.name)
+    try {
+      await fs.access(target)
+      throw new Error(`技能 "${from.name}" 在目标工作区已存在`)
+    } catch (err) {
+      if ((err as Error).message.includes('已存在')) throw err
+    }
+    await fs.cp(skillsDir(from, from.name), target, { recursive: true })
+    return { ok: true }
+  })
+
+  ipcMain.handle(IPC.SKILLS_EXPORT, async (_e, ref: SkillWorkspaceRef, name: string) => {
+    const content = await fs.readFile(join(skillsDir(ref, name), 'SKILL.md'), 'utf-8')
+    const options = {
+      title: `导出技能 ${name}`,
+      defaultPath: `${name}-skill.md`,
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    }
+    const result = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, options)
+      : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return { ok: false }
+    // SKILL.md only - supporting files stay in the workspace
+    await fs.writeFile(result.filePath, content, 'utf-8')
+    return { ok: true, path: result.filePath }
+  })
+
+  ipcMain.handle(IPC.SKILLS_IMPORT, async (_e, to: SkillWorkspaceRef) => {
+    const options = {
+      title: '导入技能',
+      properties: ['openFile' as const],
+      filters: [{ name: 'Skill definition', extensions: ['md', 'markdown'] }],
+    }
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || result.filePaths.length === 0) return { ok: false }
+    const file = result.filePaths[0]
+    const name = basename(file).replace(/\.(md|markdown)$/i, '')
+    if (!isValidTaskName(name)) {
+      throw new Error(`文件名不是有效的技能名：${name}`)
+    }
+    const target = skillsDir(to, name)
+    try {
+      await fs.access(target)
+      throw new Error(`技能 "${name}" 在目标工作区已存在`)
+    } catch (err) {
+      if ((err as Error).message.includes('已存在')) throw err
+    }
+    const content = await fs.readFile(file, 'utf-8')
+    await fs.mkdir(target, { recursive: true })
+    await fs.writeFile(join(target, 'SKILL.md'), content, 'utf-8')
+    return { ok: true, name }
   })
 
   // ── Scheduler ──

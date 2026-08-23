@@ -551,6 +551,7 @@ type FlowEdge = string | { node: string; on?: 'success' | 'failure' | 'finished'
 | 克隆 | `cloneFlow` 复制整个 Flow 目录、清空运行历史、自动改名 |
 | 人工门禁 | manual 节点进入 `waiting` 挂起整条分支，等 `resolveManualNode` 决议（v3.1.0 前为直接跳过） |
 | 导入/导出 | 流程定义以 YAML 文件导入导出；导入时校验 + 重名自动加后缀，运行历史与任务工作区不随文件携带 |
+| 技能库 | 桌面端聚合所有任务/流程工作区 `.opencode/skills` 的技能：编辑/新建/删除/跨工作区复制（整目录含附加文件）/导入导出 .md；技能与工作区名校验防路径穿越 |
 
 ### 节点类型
 
