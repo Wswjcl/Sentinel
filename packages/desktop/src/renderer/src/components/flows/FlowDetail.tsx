@@ -480,13 +480,19 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                     <input
                       type="text"
                       defaultValue={node.task}
-                      onBlur={(e) => updateNode(selectedNode!, { task: e.target.value.trim() })}
+                      onBlur={(e) => updateNode(selectedNode!, { task: e.target.value.trim() || undefined })}
                       className={inputCls}
-                      placeholder="my-task"
+                      placeholder={t('flows.nodeTaskPlaceholder')}
                     />
+                    <p className="text-xs text-[var(--color-text-dim)] mt-1">
+                      {node.task ? t('flows.nodeTaskRefHint') : t('flows.nodeTaskInlineHint')}
+                    </p>
                   </div>
                   <div>
-                    <label className={labelCls}>{t('flows.nodePromptTemplate')}</label>
+                    <label className={labelCls}>
+                      {t('flows.nodePromptTemplate')}
+                      {!node.task && <span className="text-[var(--color-red)]"> *</span>}
+                    </label>
                     <textarea
                       defaultValue={node.promptTemplate}
                       onBlur={(e) => updateNode(selectedNode!, { promptTemplate: e.target.value || undefined })}

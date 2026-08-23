@@ -80,8 +80,8 @@ export function validateFlow(config: FlowConfig, options?: FlowValidationOptions
         errors.push(`node "${name}" has invalid edge condition "${String(need.on)}"`)
       }
     }
-    if (node.type === 'ai' && !node.task && !options?.lenient) {
-      errors.push(`ai node "${name}" requires a task reference`)
+    if (node.type === 'ai' && !node.task && !node.promptTemplate && !options?.lenient) {
+      errors.push(`ai node "${name}" requires a task reference or an inline prompt`)
     }
     if (node.type === 'script' && !node.run && !options?.lenient) {
       errors.push(`script node "${name}" requires a run command`)
@@ -516,8 +516,9 @@ export class FlowEngine {
   }
 
   /**
-   * Execute an ai node against its referenced task workspace, or a
-   * manual node's AI takeover in the flow directory.
+   * Execute an ai node: in the referenced task's workspace (reference
+   * mode), inline in the flow directory (ai node without task), or a
+   * manual node's AI takeover (also flow directory).
    */
   private async runAiNode(
     flowName: string,
@@ -530,23 +531,28 @@ export class FlowEngine {
     let taskDir: string
     let baseConfig: TaskConfig
 
-    if (aiNode) {
-      // Throws if the referenced task doesn't exist - node fails with
-      // a clear error.
+    if (aiNode?.task) {
+      // Reference mode - throws if the referenced task doesn't exist,
+      // the node fails with a clear error.
       taskDir = this.taskStore.getTaskDir(aiNode.task)
       baseConfig = await this.taskStore.getConfig(aiNode.task)
     } else {
-      // Manual node with aiTakeover: run in the flow directory
-      const node = config.nodes[name] as ManualFlowNode
+      // Inline definition in the flow directory: an ai node without a
+      // task reference, or a manual node's aiTakeover. Flow-level
+      // .opencode/skills are available to the agent.
+      const fallbackPrompt = aiNode
+        ? `Execute inline step "${name}" of flow "${flowName}".`
+        : (config.nodes[name] as ManualFlowNode).takeoverPrompt ??
+          `Complete the manual step "${name}" of flow "${flowName}".`
       taskDir = this.flowStore.getFlowDir(flowName)
       baseConfig = {
         name: `flow-${flowName}-${name}`,
-        description: `AI takeover of manual node "${name}"`,
+        description: `Inline execution of node "${name}" (flow "${flowName}")`,
         version: 1,
         schedule: { type: 'once', expr: 'now' },
-        execution: { prompt: node.takeoverPrompt ?? `Complete the manual step "${name}" of flow "${flowName}".` },
+        execution: { prompt: aiNode?.promptTemplate ?? fallbackPrompt },
       }
-      nr.aiTakeover = true
+      if (!aiNode) nr.aiTakeover = true
     }
 
     const prompt = this.resolveTemplate(aiNode?.promptTemplate ?? baseConfig.execution.prompt, run)

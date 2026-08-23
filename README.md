@@ -42,7 +42,7 @@ v1.0.0 新增 `@sentinel/desktop` — 基于 Electron + React + Tailwind 的原�
 | 任务列表 | 深色主题卡片式布局，状态指示器、调度信息、运行计数 |
 | 任务详情 | 6 标签页：概览 / 文件树 / 输出文件 / 执行历史 / **实时** / OpenCode 配置 |
 | 创建任务 | 模态对话框，支持名称/描述/项目目录/调度/Prompt/模型/权限/**会话模式** |
-| Flow 画布 | SVG DAG 可视化：节点拖拽布局、条件边样式（失败红虚线）、节点编辑、断点恢复、克隆 |
+| Flow 画布 | SVG DAG 可视化：节点拖拽布局、条件边样式（失败红虚线）、节点编辑、断点恢复、克隆、**ai 节点内嵌定义** |
 | 人工门禁 | manual 节点运行时挂起等待审批：卡片式通过/拒绝（备注注入下游）+ 系统通知（v3.1.0） |
 | 流程导入/导出 | 流程定义导出为 YAML 文件 / 从文件导入（校验 + 重名自动改名）（v3.1.0） |
 | 实时页签 | Serve 模式下：实时文本/推理/工具调用流、权限审批卡片、停止按钮（v3.0.0） |
@@ -146,12 +146,16 @@ version: 1
 nodes:
   fetch:
     type: ai
-    task: news-fetcher        # 引用已有任务的工作区
+    task: news-fetcher        # 引用模式：在已有任务的工作区执行
+  summarize:                  # 内嵌模式：不引用任务，提示词即定义，
+    type: ai                  # 在流程目录执行（v3.2.0）
+    promptTemplate: "用三句话总结：{fetch.output}"
+    needs: [fetch]
   analyze:
     type: ai
     task: news-analyzer
-    needs: [fetch]
-    promptTemplate: "基于上游输出：{fetch.output}，输出分析报告"
+    needs: [summarize]
+    promptTemplate: "基于上游输出：{summarize.output}，输出分析报告"
   notify:
     type: script
     needs:
@@ -167,6 +171,11 @@ nodes:
 
 maxTotalSeconds: 3600         # 整个 Flow 的墙钟预算
 ```
+
+ai 节点两种形态（v3.2.0）：
+
+- **引用模式**（`task: xxx`）：在已建任务的工作区执行，沿用该任务的技能与 OpenCode 配置——适合复用现成任务
+- **内嵌模式**（无 `task`）：节点自带 `promptTemplate`（必填），在流程目录执行，流程级 `.opencode/skills/` 技能可用——适合流程专属的轻量步骤，不必先建任务
 
 ## 任务目录结构（一目录一任务，v3.2.0）
 

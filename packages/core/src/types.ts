@@ -168,11 +168,15 @@ export interface FlowNodeBase {
 
 export interface AIFlowNode extends FlowNodeBase {
   type: 'ai'
-  /** Name of an existing task workspace this node executes. */
-  task: string
+  /** Reference mode: name of an existing task workspace this node
+   *  executes in (its .opencode config and skills apply). Omit for an
+   *  inline node: promptTemplate is the task definition and the node
+   *  runs in the flow directory (flow-level .opencode/skills apply). */
+  task?: string
   /** Prompt template. Placeholders {node.output} inject upstream node
    *  outputs and {inputs.key} injects run inputs. Falls back to the
-   *  referenced task's own prompt when omitted. */
+   *  referenced task's own prompt when omitted; required for inline
+   *  nodes (no task). */
   promptTemplate?: string
   /** Model override for this node. */
   model?: string

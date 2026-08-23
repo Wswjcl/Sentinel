@@ -178,7 +178,7 @@
     "noNodeSelected": "点击画布中的节点进行编辑",
     "nodeType": "类型",
     "nodeNeeds": "依赖 (点击切换)",
-    "nodeTask": "任务名",
+    "nodeTask": "任务名（引用，可选）",
     "nodePromptTemplate": "提示词模板",
     "nodeRun": "命令",
     "nodeTakeover": "允许 AI 接管",
@@ -212,7 +212,10 @@
     "gateRunId": "运行 {{id}}",
     "gateGone": "该审批已被处理（或流程已结束）",
     "nodeGatePrompt": "审批提示语",
-    "gatePromptPlaceholder": "审批卡片上展示的检查要点..."
+    "gatePromptPlaceholder": "审批卡片上展示的检查要点...",
+    "nodeTaskPlaceholder": "引用已有任务；留空 = 内嵌执行",
+    "nodeTaskRefHint": "引用模式：在该任务的工作区执行（沿用其技能与 OpenCode 配置）",
+    "nodeTaskInlineHint": "内嵌模式：在流程目录执行，提示词即任务定义，流程 .opencode/skills 的技能可用"
   },
   "scheduler": {
     "title": "调度器",

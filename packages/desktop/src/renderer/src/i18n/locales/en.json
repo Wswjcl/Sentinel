@@ -178,7 +178,7 @@
     "noNodeSelected": "Click a node on the canvas to edit it",
     "nodeType": "Type",
     "nodeNeeds": "Depends on (click to toggle)",
-    "nodeTask": "Task",
+    "nodeTask": "Task (reference, optional)",
     "nodePromptTemplate": "Prompt template",
     "nodeRun": "Command",
     "nodeTakeover": "Allow AI takeover",
@@ -212,7 +212,10 @@
     "gateRunId": "run {{id}}",
     "gateGone": "This gate was already settled (or the run ended)",
     "nodeGatePrompt": "Gate instructions",
-    "gatePromptPlaceholder": "What to check before approving, shown on the gate card..."
+    "gatePromptPlaceholder": "What to check before approving, shown on the gate card...",
+    "nodeTaskPlaceholder": "reference an existing task; empty = inline",
+    "nodeTaskRefHint": "Reference mode: runs in that task workspace (its skills and OpenCode config apply)",
+    "nodeTaskInlineHint": "Inline mode: runs in the flow directory; the prompt is the task definition, flow .opencode/skills apply"
   },
   "scheduler": {
     "title": "Scheduler",

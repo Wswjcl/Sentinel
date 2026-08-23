@@ -554,7 +554,7 @@ type FlowEdge = string | { node: string; on?: 'success' | 'failure' | 'finished'
 
 ### 节点类型
 
-- **ai** — 引用已有任务工作区执行，支持 `{node.output}`（上游输出注入）与 `{inputs.key}`（运行时输入）占位符
+- **ai** — 两种形态（v3.2.0）：**引用模式**（`task: xxx`）在已有任务的工作区执行，沿用其技能与 OpenCode 配置；**内嵌模式**（无 `task`，`promptTemplate` 必填）在流程目录执行，流程级 `.opencode/skills` 可用。两者都支持 `{node.output}`（上游输出注入）与 `{inputs.key}`（运行时输入）占位符
 - **script** — 目录内 shell 命令，带超时与 cwd
 - **manual** — 人工门禁；未开启 `aiTakeover` 时进入 `waiting` 真正阻塞等待人工决议：通过（备注作为 `{node.output}` 注入下游，缺省 'approved'）或拒绝（节点失败，备注为失败原因）。`gatePrompt` 是展示给审批人的检查要点；`maxTotalSeconds` 预算耗尽时等待中的门禁被取消（skipped: budget-exhausted）；桌面端提供审批卡片 + 系统通知，同一流程同时只允许一个运行（含等待审批期间）
 

@@ -387,6 +387,49 @@ try {
 }
 check('T16 engine refuses to run a draft', draftRunErr !== null && draftRunErr.includes('requires a task reference'), draftRunErr)
 
+// ── Test 17: inline ai nodes (no task reference) run in the flow dir ──
+const inlineCalls = []
+const inlineEngine = new FlowEngine({
+  flowStore: new FlowStore({ flowsDir }),
+  taskStore: new TaskStore({ tasksDir }),
+  concurrency: 3,
+  executeOverride: async (options) => {
+    inlineCalls.push({ taskDir: options.taskDir, prompt: options.config.execution.prompt })
+    return {
+      record: {
+        id: randomUUID(), taskName: options.config.name,
+        startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
+        status: 'success', exitCode: 0,
+      },
+      stdout: '', stderr: '',
+      summary: `INLINE:${options.config.execution.prompt}`,
+    }
+  },
+  onLog: () => {},
+})
+await writeFlow('inline-flow', `
+name: inline-flow
+version: 1
+nodes:
+  step:
+    type: ai
+    promptTemplate: "summarize {inputs.topic}"
+  consumer:
+    type: script
+    run: "echo got:{step.output}"
+    needs: [step]
+`)
+const inlineCfg = await store.getConfig('inline-flow')
+check('T17 inline ai valid without task reference', validateFlow(inlineCfg).valid, JSON.stringify(validateFlow(inlineCfg).errors))
+const r17 = await inlineEngine.run('inline-flow', { inputs: { topic: 'news' } })
+check('T17 inline node succeeded', r17.nodes.step.status === 'success', JSON.stringify(r17.nodes.step))
+check('T17 inline node ran in the flow directory', inlineCalls[0]?.taskDir === join(flowsDir, 'inline-flow'), inlineCalls[0]?.taskDir)
+check('T17 prompt resolved with inputs', inlineCalls[0]?.prompt === 'summarize news', inlineCalls[0]?.prompt)
+check('T17 inline output injected downstream', (r17.nodes.consumer.output ?? '').includes('INLINE:summarize news'), r17.nodes.consumer.output)
+const neither = validateFlow({ name: 'neither-flow', version: 1, nodes: { a: { type: 'ai' } } })
+check('T17 neither task nor prompt rejected', !neither.valid && neither.errors.some((e) => e.includes('requires a task reference or an inline prompt')), JSON.stringify(neither.errors))
+check('T17 lenient allows neither (draft)', validateFlow({ name: 'neither-flow', version: 1, nodes: { a: { type: 'ai' } } }, { lenient: true }).valid)
+
 // cleanup
 await fs.rm(tmp, { recursive: true, force: true })
 console.log(failures === 0 ? '\n=== ALL SMOKE TESTS PASSED ===' : `\n=== ${failures} TEST(S) FAILED ===`)
