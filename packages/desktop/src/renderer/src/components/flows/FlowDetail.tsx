@@ -630,6 +630,19 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                     </p>
                   </div>
                   <div>
+                    <label className={labelCls}>{t('flows.nodeModel')}</label>
+                    <input
+                      type="text"
+                      defaultValue={node.model}
+                      onBlur={(e) => updateNode(selectedNode!, { model: e.target.value.trim() || undefined })}
+                      className={`${inputCls} font-mono`}
+                      placeholder={t('flows.nodeModelPlaceholder')}
+                    />
+                    <p className="text-xs text-[var(--color-text-dim)] mt-1">
+                      {t('flows.nodeModelHint')}
+                    </p>
+                  </div>
+                  <div>
                     <label className={labelCls}>
                       {t('flows.nodePromptTemplate')}
                       {!node.task && <span className="text-[var(--color-red)]"> *</span>}
