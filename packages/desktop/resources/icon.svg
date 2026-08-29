@@ -1,0 +1,34 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Sentinel: shield + agent loop -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5290ff"/>
+      <stop offset="1" stop-color="#2160e8"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e9f0fe"/>
+    </linearGradient>
+    <linearGradient id="loop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3f83f8"/>
+      <stop offset="1" stop-color="#1d5adf"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>
+
+  <!-- shield -->
+  <path d="M 512 170 L 836 282 V 520 C 836 716 700 838 512 908 C 324 838 188 716 188 520 V 282 Z"
+        fill="url(#shield)"/>
+
+  <!-- agent loop: two half-circle arrows -->
+  <g stroke="url(#loop)" stroke-width="60" fill="none" stroke-linecap="round">
+    <path d="M 512 340 A 165 165 0 0 1 512 670"/>
+    <path d="M 512 670 A 165 165 0 0 1 512 340"/>
+  </g>
+  <!-- arrowheads -->
+  <g fill="url(#loop)">
+    <path d="M 402 670 L 514 606 L 514 734 Z"/>
+    <path d="M 622 340 L 510 276 L 510 404 Z"/>
+  </g>
+</svg>
