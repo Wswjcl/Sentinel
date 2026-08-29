@@ -59,6 +59,12 @@ export const IPC = {
   // App
   APP_VERSION: 'app:version',
   APP_DATA: 'app:data',
+  APP_RESTART: 'app:restart',
+
+  // Tasks directory relocation
+  TASKS_DIR_INFO: 'tasks:dir:info',
+  TASKS_DIR_CHOOSE: 'tasks:dir:choose',
+  TASKS_DIR_SET: 'tasks:dir:set',
 
   // Serve runtime (R3)
   RUNTIME_MODE_GET: 'runtime:mode:get',
@@ -187,6 +193,17 @@ export type LiveEventData =
   | { kind: 'tool-finish'; tool: string; title?: string; status: string }
   | { kind: 'status'; status: string }
 
+// ─── Tasks directory relocation ─────────────────────────────────────
+
+export interface TasksDirInfo {
+  /** Effective tasks directory (override or default). */
+  current: string
+  /** Built-in location next to the program data. */
+  defaultDir: string
+  /** A user override is active. */
+  overridden: boolean
+}
+
 // ─── Exposed API (preload -> renderer) ──────────────────────────────
 
 export interface ExposedAPI {
@@ -259,6 +276,15 @@ export interface ExposedAPI {
   // App
   getAppVersion(): Promise<string>
   getAppDataDir(): Promise<string>
+  restartApp(): Promise<void>
+
+  // Tasks directory relocation
+  getTasksDirInfo(): Promise<TasksDirInfo>
+  /** Open a native directory picker; null when cancelled. */
+  chooseTasksDir(): Promise<string | null>
+  /** Switch the tasks directory. migrate=true moves workspaces living
+   *  inside the current tasks dir into the new one. */
+  setTasksDir(dir: string, migrate: boolean): Promise<{ ok: boolean; moved: number }>
 
   // Serve runtime
   getRuntimeMode(): Promise<RuntimeMode>

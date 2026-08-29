@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage, Notification, dialog } from 'electron'
-import { promises as fs } from 'node:fs'
-import { join, resolve, dirname, basename } from 'node:path'
+import { promises as fs, readFileSync } from 'node:fs'
+import { join, resolve, dirname, basename, parse } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
@@ -32,6 +32,32 @@ function resolveDataDir(): string {
 }
 
 const DATA_DIR = resolveDataDir()
+
+// ─── App settings (userData/settings.json) ─────────────────────────
+// Lives OUTSIDE the data dir on purpose: it must survive data-dir
+// relocation (otherwise the tasks-dir override could never point
+// anywhere else).
+
+interface AppSettings {
+  /** Custom tasks directory (registry home + workspace parent). */
+  tasksDir?: string
+}
+
+const SETTINGS_FILE = join(app.getPath('userData'), 'settings.json')
+
+function loadAppSettings(): AppSettings {
+  try {
+    return JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) as AppSettings
+  } catch {
+    return {}
+  }
+}
+
+async function saveAppSettings(patch: AppSettings): Promise<void> {
+  const next = { ...loadAppSettings(), ...patch }
+  await fs.mkdir(dirname(SETTINGS_FILE), { recursive: true })
+  await fs.writeFile(SETTINGS_FILE, JSON.stringify(next, null, 2), 'utf-8')
+}
 
 /**
  * Resolve a runtime asset (window/tray icons) shipped in resources/:
@@ -67,8 +93,10 @@ async function migrateLegacyData(): Promise<void> {
   }
 }
 
-const TASKS_DIR = join(DATA_DIR, 'tasks')
+const DEFAULT_TASKS_DIR = join(DATA_DIR, 'tasks')
 const FLOWS_DIR = join(DATA_DIR, 'flows')
+const APP_SETTINGS = loadAppSettings()
+const TASKS_DIR = APP_SETTINGS.tasksDir?.trim() || DEFAULT_TASKS_DIR
 const store = new TaskStore({ tasksDir: TASKS_DIR })
 const flowStore = new FlowStore({ flowsDir: FLOWS_DIR })
 
@@ -1011,6 +1039,57 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.APP_DATA, () => {
     return DATA_DIR
+  })
+
+  ipcMain.handle(IPC.TASKS_DIR_INFO, () => {
+    const current = store.getTasksDir()
+    const norm = (p: string): string =>
+      resolve(p).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+    return {
+      current,
+      defaultDir: DEFAULT_TASKS_DIR,
+      overridden: norm(current) !== norm(DEFAULT_TASKS_DIR),
+    }
+  })
+
+  ipcMain.handle(IPC.TASKS_DIR_CHOOSE, async () => {
+    const res = await dialog.showOpenDialog(mainWindow!, {
+      title: '选择任务目录 / Choose tasks directory',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0]
+  })
+
+  ipcMain.handle(
+    IPC.TASKS_DIR_SET,
+    async (_e, opts: { dir: string; migrate: boolean }) => {
+      const dir = resolve(String(opts?.dir ?? '').trim())
+      if (!dir || parse(dir).root === dir) {
+        throw new Error('无效的任务目录')
+      }
+      await fs.mkdir(dir, { recursive: true })
+      let moved = 0
+      if (opts.migrate) {
+        moved = await store.migrateTasksTo(dir)
+      } else {
+        // No migration: still refuse an overlapping directory (the new
+        // store would adopt the old location's workspaces)
+        const norm = (p: string): string =>
+          resolve(p).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+        const cur = norm(store.getTasksDir())
+        const next = norm(dir)
+        if (cur === next || next.startsWith(cur + '/') || cur.startsWith(next + '/')) {
+          throw new Error('新目录不能与当前任务目录重叠')
+        }
+      }
+      await saveAppSettings({ tasksDir: dir })
+      return { ok: true, moved }
+    },
+  )
+
+  ipcMain.handle(IPC.APP_RESTART, () => {
+    app.relaunch()
+    app.exit(0)
   })
 }
 

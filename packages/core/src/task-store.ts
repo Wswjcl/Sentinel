@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs'
 import type { Dirent } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join, resolve, basename } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { TaskConfig, TaskInfo, TaskRunRecord, TaskStatus } from './types.js'
 import type { OpenCodeConfig } from './opencode-config.js'
@@ -132,6 +132,44 @@ export class TaskStore {
     // Unregistered names fall back to the legacy data-dir location
     // (direct workspace writes, e.g. fixtures, keep working)
     return this.dirs.get(name) ?? join(this.tasksDir, name)
+  }
+
+  /** Current tasks directory (registry home + default workspace parent). */
+  getTasksDir(): string {
+    return this.tasksDir
+  }
+
+  /** Relocate the tasks directory: workspaces living inside the old
+   *  tasks dir are MOVED into the new one (copy, then remove the old
+   *  copy); external workspaces stay put and are only re-registered.
+   *  The store switches over immediately and the registry is rewritten
+   *  at the new location. Returns the number of workspaces moved. */
+  async migrateTasksTo(newTasksDir: string): Promise<number> {
+    const target = resolve(newTasksDir)
+    if (normPath(target) === normPath(this.tasksDir)) return 0
+    if (isInside(target, this.tasksDir) || isInside(this.tasksDir, target)) {
+      throw new Error('New tasks directory must not overlap the current one')
+    }
+    await this.loadRegistry()
+    await fs.mkdir(target, { recursive: true })
+    const moved = new Map<string, string>()
+    for (const [name, dir] of this.dirs) {
+      if (!isInside(dir, this.tasksDir)) continue // external workspace
+      const dest = join(target, basename(dir))
+      try {
+        await fs.access(dest)
+        throw new Error(`Target already exists: ${dest}`)
+      } catch (err) {
+        if ((err as Error).message.startsWith('Target already exists')) throw err
+      }
+      await fs.cp(dir, dest, { recursive: true })
+      await fs.rm(dir, { recursive: true, force: true })
+      moved.set(name, dest)
+    }
+    for (const [name, dest] of moved) this.dirs.set(name, dest)
+    this.tasksDir = target
+    await this.persistRegistry()
+    return moved.size
   }
 
   /** Register a task workspace: the directory becomes the task's home

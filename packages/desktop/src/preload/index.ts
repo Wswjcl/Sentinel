@@ -57,6 +57,12 @@ const api: ExposedAPI = {
   // ── App ──
   getAppVersion: () => ipcRenderer.invoke(IPC.APP_VERSION),
   getAppDataDir: () => ipcRenderer.invoke(IPC.APP_DATA),
+  restartApp: () => ipcRenderer.invoke(IPC.APP_RESTART),
+
+  // ── Tasks directory relocation ──
+  getTasksDirInfo: () => ipcRenderer.invoke(IPC.TASKS_DIR_INFO),
+  chooseTasksDir: () => ipcRenderer.invoke(IPC.TASKS_DIR_CHOOSE),
+  setTasksDir: (dir, migrate) => ipcRenderer.invoke(IPC.TASKS_DIR_SET, { dir, migrate }),
 
   // ── Serve runtime ──
   getRuntimeMode: () => ipcRenderer.invoke(IPC.RUNTIME_MODE_GET),
