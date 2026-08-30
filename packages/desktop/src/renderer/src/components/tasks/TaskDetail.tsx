@@ -3,6 +3,7 @@ import type { TaskInfo, TaskStatus, TaskRunRecord } from '@sentinel/core'
 import { ArrowLeft, Play, Pause, Trash2, RefreshCw, FolderOpen, FileText, Clock, Radio, Square, ShieldAlert } from 'lucide-react'
 import { useI18n } from '../../hooks/useI18n'
 import { useModelOptions } from '../../hooks/useModels'
+import { describeScheduleText } from '../../lib/schedule'
 import type { TreeNode, OutputFile, PermissionAskData, LiveEventData, ProviderProfile } from '../../../../shared/ipc-types'
 
 interface TaskDetailProps {
@@ -236,7 +237,7 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
 
 function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => void }) {
   const { config, status, lastRun, nextRun, runCount } = task
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const [sessionSaving, setSessionSaving] = useState(false)
   const [profiles, setProfiles] = useState<ProviderProfile[]>([])
   const [bindingSaving, setBindingSaving] = useState(false)
@@ -286,7 +287,7 @@ function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => voi
 
   const fields = [
     { label: t('detail.status'), value: t(`status.${status}`) },
-    { label: t('detail.schedule'), value: `${config.schedule.type}: ${config.schedule.expr}` },
+    { label: t('detail.schedule'), value: describeScheduleText(config.schedule.type, config.schedule.expr, t, locale) + (config.schedule.timezone ? ` · ${config.schedule.timezone}` : '') },
     { label: t('detail.timezone'), value: config.schedule.timezone ?? 'UTC' },
     { label: t('detail.model'), value: config.execution.model ?? 'default' },
     { label: t('detail.agent'), value: config.execution.agent ?? 'default' },

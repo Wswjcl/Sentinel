@@ -7,6 +7,45 @@
   "models": {
     "free": "免费"
   },
+  "schedule": {
+    "chip": {
+      "every15m": "每15分钟",
+      "hourly": "每小时",
+      "daily": "每天",
+      "weekdays": "工作日",
+      "weekly": "每周",
+      "once": "立即一次",
+      "custom": "自定义 cron"
+    },
+    "dailyTime": "每天运行时间",
+    "weekdaysTime": "工作日运行时间",
+    "weeklyTime": "每周运行时间",
+    "weekday": {
+      "0": "周日",
+      "1": "周一",
+      "2": "周二",
+      "3": "周三",
+      "4": "周四",
+      "5": "周五",
+      "6": "周六"
+    },
+    "everyLabel": "运行间隔",
+    "unitMinutes": "分钟",
+    "unitHours": "小时",
+    "unitDays": "天",
+    "onceDesc": "创建后立即运行一次，然后自动归档",
+    "invalidCron": "cron 表达式无效，请检查格式",
+    "timezone": "时区",
+    "tzSystem": "跟随系统",
+    "previewMeaning": "含义：",
+    "previewNext": "下次运行：",
+    "descOnce": "立即运行一次后归档",
+    "descEveryMinute": "每分钟",
+    "descEveryN": "每 {{n}} {{unit}}",
+    "descDaily": "每天 {{time}}",
+    "descWeekdays": "工作日 {{time}}",
+    "descWeekly": "每周{{day}} {{time}}"
+  },
   "sidebar": {
     "tasks": "任务",
     "flows": "流程",

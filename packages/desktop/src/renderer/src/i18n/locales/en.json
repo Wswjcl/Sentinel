@@ -7,6 +7,45 @@
   "models": {
     "free": "free"
   },
+  "schedule": {
+    "chip": {
+      "every15m": "Every 15 min",
+      "hourly": "Hourly",
+      "daily": "Daily",
+      "weekdays": "Weekdays",
+      "weekly": "Weekly",
+      "once": "Run once",
+      "custom": "Custom cron"
+    },
+    "dailyTime": "Daily run time",
+    "weekdaysTime": "Weekday run time",
+    "weeklyTime": "Weekly run time",
+    "weekday": {
+      "0": "Sun",
+      "1": "Mon",
+      "2": "Tue",
+      "3": "Wed",
+      "4": "Thu",
+      "5": "Fri",
+      "6": "Sat"
+    },
+    "everyLabel": "Interval",
+    "unitMinutes": "minutes",
+    "unitHours": "hours",
+    "unitDays": "days",
+    "onceDesc": "Runs once right after creation, then auto-archives",
+    "invalidCron": "Invalid cron expression",
+    "timezone": "Timezone",
+    "tzSystem": "System default",
+    "previewMeaning": "Meaning:",
+    "previewNext": "Next run:",
+    "descOnce": "Runs once now, then archives",
+    "descEveryMinute": "Every minute",
+    "descEveryN": "Every {{n}} {{unit}}",
+    "descDaily": "Daily at {{time}}",
+    "descWeekdays": "Weekdays at {{time}}",
+    "descWeekly": "Every {{day}} at {{time}}"
+  },
   "sidebar": {
     "tasks": "Tasks",
     "flows": "Flows",

@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import type { CreateTaskOpts } from '../../../../shared/ipc-types'
 import { useI18n } from '../../hooks/useI18n'
 import { useModelOptions } from '../../hooks/useModels'
+import ScheduleEditor, { type ScheduleValue } from './ScheduleEditor'
 
 const AVAILABLE_AGENTS = ['build', 'plan', 'explore', 'general']
 const AVAILABLE_TOOLS = [
@@ -18,8 +19,7 @@ interface CreateTaskDialogProps {
 export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialogProps) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [scheduleType, setScheduleType] = useState<'cron' | 'interval' | 'once'>('cron')
-  const [scheduleExpr, setScheduleExpr] = useState('*/30 * * * *')
+  const [schedule, setSchedule] = useState<ScheduleValue>({ type: 'cron', expr: '*/30 * * * *' })
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState('')
   const [agent, setAgent] = useState('build')
@@ -78,7 +78,7 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
         name: name.trim(),
         description: description.trim() || undefined,
         projectDir: projectDir.trim() || undefined,
-        schedule: { type: scheduleType, expr: scheduleExpr },
+        schedule: { type: schedule.type, expr: schedule.expr, timezone: schedule.timezone },
         execution: {
           prompt: prompt.trim(),
           model: model.trim() || undefined,
@@ -188,43 +188,11 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
           </div>
 
           {/* Schedule */}
-          <div className="flex gap-3">
-            <div className="w-28">
-              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
-                {t('create.scheduleType')}
-              </label>
-              <select
-                value={scheduleType}
-                onChange={(e) => {
-                  const val = e.target.value as 'cron' | 'interval' | 'once'
-                  setScheduleType(val)
-                  if (val === 'interval') setScheduleExpr('30m')
-                  else if (val === 'once') setScheduleExpr('now')
-                  else setScheduleExpr('*/30 * * * *')
-                }}
-                className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
-                           px-3 py-1.5 text-sm text-[var(--color-text)]
-                           focus:outline-none focus:border-[var(--color-blue)] transition-colors"
-              >
-                <option value="cron">{t('create.cron')}</option>
-                <option value="interval">{t('create.interval')}</option>
-                <option value="once">{t('create.once')}</option>
-              </select>
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
-                {t('create.expression')}
-              </label>
-              <input
-                type="text"
-                value={scheduleExpr}
-                onChange={(e) => setScheduleExpr(e.target.value)}
-                placeholder={t('create.expressionPlaceholder')}
-                className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
-                           px-3 py-1.5 text-sm text-[var(--color-text)] placeholder-[var(--color-text-dim)]
-                           focus:outline-none focus:border-[var(--color-blue)] transition-colors"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
+              {t('create.scheduleType')}
+            </label>
+            <ScheduleEditor value={schedule} onChange={setSchedule} />
           </div>
 
           {/* Prompt */}

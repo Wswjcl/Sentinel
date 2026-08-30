@@ -86,3 +86,58 @@ export function isValidSchedule(type: string, expr: string): boolean {
   if (type === 'once') return expr.trim().length > 0
   return false
 }
+
+// ─── Human-readable schedule description ────────────────────
+
+/** Structured description of a 5-field cron expression, for UI layers
+ *  to render in the user's language. Recognizes the common patterns
+ *  the editor generates; anything else falls back to 'custom'. */
+export type CronDescription =
+  | { kind: 'every-minutes'; minutes: number }
+  | { kind: 'every-hours'; hours: number }
+  | { kind: 'daily'; time: string }
+  | { kind: 'weekdays'; time: string }
+  | { kind: 'weekly'; time: string; weekday: number }
+  | { kind: 'custom' }
+
+/** Parse helpers for individual cron fields. */
+const isStar = (f: string): boolean => f === '*'
+const isNum = (f: string): boolean => /^\d+$/.test(f)
+
+export function describeCron(expr: string): CronDescription {
+  const parts = expr.trim().split(/\s+/)
+  if (parts.length !== 5) return { kind: 'custom' }
+  const [m, h, dom, mon, dow] = parts
+
+  // every N minutes: */n * * * *
+  if (/^\*\/\d+$/.test(m) && isStar(h) && isStar(dom) && isStar(mon) && isStar(dow)) {
+    const minutes = parseInt(m.slice(2), 10)
+    if (minutes > 0) return { kind: 'every-minutes', minutes }
+  }
+  // every minute: * * * * *
+  if (isStar(m) && isStar(h) && isStar(dom) && isStar(mon) && isStar(dow)) {
+    return { kind: 'every-minutes', minutes: 1 }
+  }
+  // every N hours: M */n * * *
+  if (isNum(m) && /^\*\/\d+$/.test(h) && isStar(dom) && isStar(mon) && isStar(dow)) {
+    const hours = parseInt(h.slice(2), 10)
+    if (hours > 0) return { kind: 'every-hours', hours }
+  }
+  // hourly at minute M: M * * * *
+  if (isNum(m) && isStar(h) && isStar(dom) && isStar(mon) && isStar(dow)) {
+    return { kind: 'every-hours', hours: 1 }
+  }
+  // daily at HH:MM: M H * * *
+  if (isNum(m) && isNum(h) && isStar(dom) && isStar(mon) && isStar(dow)) {
+    return { kind: 'daily', time: `${h.padStart(2, '0')}:${m.padStart(2, '0')}` }
+  }
+  // weekdays at HH:MM: M H * * 1-5
+  if (isNum(m) && isNum(h) && isStar(dom) && isStar(mon) && dow === '1-5') {
+    return { kind: 'weekdays', time: `${h.padStart(2, '0')}:${m.padStart(2, '0')}` }
+  }
+  // weekly on one weekday: M H * * D
+  if (isNum(m) && isNum(h) && isStar(dom) && isStar(mon) && isNum(dow) && Number(dow) <= 6) {
+    return { kind: 'weekly', time: `${h.padStart(2, '0')}:${m.padStart(2, '0')}`, weekday: Number(dow) }
+  }
+  return { kind: 'custom' }
+}
