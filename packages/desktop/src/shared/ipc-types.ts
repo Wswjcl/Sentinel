@@ -71,6 +71,7 @@ export const IPC = {
   PROVIDERS_SAVE: 'providers:save',
   PROVIDERS_DELETE: 'providers:delete',
   TASK_BIND_PROVIDER: 'tasks:bind-provider',
+  PROVIDERS_FETCH_MODELS: 'providers:fetch-models',
 
   // Serve runtime (R3)
   RUNTIME_MODE_GET: 'runtime:mode:get',
@@ -316,6 +317,8 @@ export interface ExposedAPI {
   /** Bind/unbind a profile on a task (null unbinds). Compiles the
    *  profile into the task workspace's .opencode config. */
   bindTaskProvider(name: string, profileId: string | null): Promise<{ ok: boolean }>
+  /** Discover model ids on an OpenAI-compatible endpoint (GET /models). */
+  fetchProviderModels(baseUrl: string, apiKey?: string): Promise<{ ok: boolean; models: string[] }>
 
   // Serve runtime
   getRuntimeMode(): Promise<RuntimeMode>

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { FolderOpen, Sun, Moon, Zap, Terminal, Pencil, RotateCcw, Check, AlertCircle, Plus, Trash2, Server } from 'lucide-react'
+import { FolderOpen, Sun, Moon, Zap, Terminal, Pencil, RotateCcw, Check, AlertCircle, Plus, Trash2, Server, RefreshCw } from 'lucide-react'
 import { useTheme, type Theme } from '../../hooks/useTheme'
 import { useI18n, type Locale, LOCALE_LABELS } from '../../hooks/useI18n'
+import { PROVIDER_PRESETS } from '../../lib/provider-presets'
 import type { RuntimeMode, TasksDirInfo, ProviderProfile } from '../../../../shared/ipc-types'
 
 const inputCls = `w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
@@ -23,6 +24,8 @@ export default function SettingsPanel() {
   const [profiles, setProfiles] = useState<ProviderProfile[]>([])
   const [editingProfile, setEditingProfile] = useState<Partial<ProviderProfile> | null>(null)
   const [profileError, setProfileError] = useState<string | null>(null)
+  const [fetchedModels, setFetchedModels] = useState<string[]>([])
+  const [fetchingModels, setFetchingModels] = useState(false)
 
   useEffect(() => {
     window.api.getAppVersion().then(setVersion).catch(() => setVersion('unknown'))
@@ -59,6 +62,43 @@ export default function SettingsPanel() {
     await window.api.deleteProvider(id).catch(() => {})
     refreshProfiles()
   }
+
+  const applyPreset = (presetId: string) => {
+    const preset = PROVIDER_PRESETS.find((p) => p.id === presetId)
+    if (!preset || !editingProfile) return
+    setEditingProfile({
+      ...editingProfile,
+      name: editingProfile.name?.trim() || preset.name,
+      provider: preset.id,
+      baseUrl: preset.baseUrl,
+      model: preset.models.includes(editingProfile.model ?? '') ? editingProfile.model : preset.models[0],
+    })
+    setFetchedModels([])
+  }
+
+  const fetchModels = async () => {
+    const baseUrl = editingProfile?.baseUrl?.trim()
+    if (!baseUrl) return
+    setFetchingModels(true)
+    setProfileError(null)
+    try {
+      const res = await window.api.fetchProviderModels(baseUrl, editingProfile?.apiKey)
+      setFetchedModels(res.models)
+      if (!editingProfile?.model?.trim() && res.models.length > 0) {
+        setEditingProfile((prev) => (prev ? { ...prev, model: res.models[0] } : prev))
+      }
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setFetchingModels(false)
+    }
+  }
+
+  const modelSuggestions = (() => {
+    if (fetchedModels.length > 0) return fetchedModels
+    const preset = PROVIDER_PRESETS.find((p) => p.id === editingProfile?.provider)
+    return preset?.models ?? []
+  })()
 
   const refreshDirInfo = () => {
     window.api.getTasksDirInfo().then(setDirInfo).catch(() => {})
@@ -332,7 +372,7 @@ export default function SettingsPanel() {
               <div className="text-xs text-[var(--color-text-dim)]">{t('settings.providersDesc')}</div>
             </div>
             <button
-              onClick={() => { setEditingProfile({}); setProfileError(null) }}
+              onClick={() => { setEditingProfile({}); setProfileError(null); setFetchedModels([]) }}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium shrink-0
                          bg-[var(--color-blue)] text-white hover:opacity-90 transition-opacity"
             >
@@ -360,7 +400,7 @@ export default function SettingsPanel() {
                   )}
                 </div>
                 <button
-                  onClick={() => { setEditingProfile(p); setProfileError(null) }}
+                  onClick={() => { setEditingProfile(p); setProfileError(null); setFetchedModels([]) }}
                   className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-border)] transition-colors"
                   title={t('settings.tasksDirModify')}
                 >
@@ -379,6 +419,18 @@ export default function SettingsPanel() {
 
           {editingProfile && (
             <div className="mt-3 border border-[var(--color-blue)]/40 bg-[var(--color-blue)]/5 rounded-lg p-3 space-y-2">
+              <select
+                value={PROVIDER_PRESETS.some((p) => p.id === editingProfile.provider) ? editingProfile.provider : ''}
+                onChange={(e) => applyPreset(e.target.value)}
+                className={inputCls}
+              >
+                <option value="">{t('settings.presetSelect')}</option>
+                {PROVIDER_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.baseUrl.replace(/^https?:\/\//, '').slice(0, 32)})
+                  </option>
+                ))}
+              </select>
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
@@ -394,21 +446,41 @@ export default function SettingsPanel() {
                   placeholder={t('settings.providerId')}
                   className={`${inputCls} font-mono`}
                 />
+              </div>
+              <div className="flex gap-2">
                 <input
                   type="text"
                   value={editingProfile.model ?? ''}
                   onChange={(e) => setEditingProfile({ ...editingProfile, model: e.target.value })}
                   placeholder={t('settings.providerModel')}
-                  className={`${inputCls} font-mono`}
+                  list="preset-model-options"
+                  className={`${inputCls} font-mono flex-1`}
                 />
-                <input
-                  type="text"
-                  value={editingProfile.baseUrl ?? ''}
-                  onChange={(e) => setEditingProfile({ ...editingProfile, baseUrl: e.target.value })}
-                  placeholder={t('settings.providerBaseUrl')}
-                  className={`${inputCls} font-mono`}
-                />
+                <button
+                  type="button"
+                  onClick={() => void fetchModels()}
+                  disabled={fetchingModels || !editingProfile.baseUrl?.trim()}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium shrink-0
+                             bg-[var(--color-hover)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]
+                             disabled:opacity-50 transition-colors"
+                  title={t('settings.fetchModels')}
+                >
+                  <RefreshCw className={`w-3 h-3 ${fetchingModels ? 'animate-spin' : ''}`} />
+                  {fetchingModels ? t('settings.fetchingModels') : t('settings.fetchModels')}
+                </button>
               </div>
+              <datalist id="preset-model-options">
+                {modelSuggestions.map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+              <input
+                type="text"
+                value={editingProfile.baseUrl ?? ''}
+                onChange={(e) => setEditingProfile({ ...editingProfile, baseUrl: e.target.value })}
+                placeholder={t('settings.providerBaseUrl')}
+                className={`${inputCls} font-mono`}
+              />
               <input
                 type="password"
                 value={editingProfile.apiKey ?? ''}
@@ -416,6 +488,11 @@ export default function SettingsPanel() {
                 placeholder={t('settings.providerApiKey')}
                 className={`${inputCls} font-mono`}
               />
+              {modelSuggestions.length > 0 && (
+                <p className="text-xs text-[var(--color-text-dim)]">
+                  {t('settings.modelsAvailable', { count: modelSuggestions.length })}
+                </p>
+              )}
               {profileError && (
                 <div className="text-xs text-[var(--color-red)] break-all">{profileError}</div>
               )}

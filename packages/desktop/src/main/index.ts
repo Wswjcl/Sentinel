@@ -1142,6 +1142,39 @@ function registerIpcHandlers(): void {
     await store.saveConfig(name, config)
     return { ok: true }
   })
+
+  // Discover models on an OpenAI-compatible endpoint (GET /models with
+  // candidate paths, mirroring cc-switch's approach).
+  ipcMain.handle(IPC.PROVIDERS_FETCH_MODELS, async (_e, opts: { baseUrl: string; apiKey?: string }) => {
+    const base = String(opts?.baseUrl ?? '').trim().replace(/\/+$/, '')
+    if (!/^https?:\/\//.test(base)) throw new Error('invalid baseUrl')
+    const headers: Record<string, string> = { accept: 'application/json' }
+    if (opts?.apiKey) headers.authorization = `Bearer ${opts.apiKey}`
+    const candidates = base.endsWith('/v1')
+      ? [`${base}/models`]
+      : [`${base}/v1/models`, `${base}/models`]
+    let lastError = 'request failed'
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, {
+          headers,
+          signal: AbortSignal.timeout(15_000),
+        })
+        if (!res.ok) {
+          lastError = `HTTP ${res.status} ${url}`
+          continue
+        }
+        const body = (await res.json()) as { data?: Array<{ id?: string }> } | Array<{ id?: string }>
+        const list = Array.isArray(body) ? body : body.data
+        const ids = [...new Set((list ?? []).map((m) => m?.id).filter((x): x is string => !!x))].sort()
+        if (ids.length > 0) return { ok: true, models: ids }
+        lastError = `no models in response from ${url}`
+      } catch (err) {
+        lastError = String(err)
+      }
+    }
+    throw new Error(lastError)
+  })
 }
 
 // ─── Provider profiles storage (userData/providers.json) ───────────
