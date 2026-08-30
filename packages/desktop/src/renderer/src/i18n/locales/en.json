@@ -2,7 +2,10 @@
   "app": {
     "title": "Sentinel AI Scheduler",
     "workspaces": "Workspaces",
-    "workspacesDesc": "Each workspace = one directory = one task with its own .opencode/ config"
+    "workspacesDesc": "Each workspace = one directory = one task and its .opencode/ config"
+  },
+  "models": {
+    "free": "free"
   },
   "sidebar": {
     "tasks": "Tasks",
@@ -79,6 +82,8 @@
     "usage": "Usage",
     "servedBy": "Served by",
     "providerGlobal": "global config",
+    "modelPlaceholder": "provider/model, empty = global default",
+    "modelHint": "Model override: empty = bound profile or global default; the input autocompletes models available on this machine",
     "providerBinding": "Provider binding",
     "providerGlobalOption": "Global config (default)",
     "providerBindingHint": "A bound task runs with its own provider endpoint and model, overriding the global config (e.g. the provider cc-switch switched to)",

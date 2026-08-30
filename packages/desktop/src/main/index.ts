@@ -1,9 +1,11 @@
 import { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage, Notification, dialog } from 'electron'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { promises as fs, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, resolve, dirname, basename, parse } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents, applyProviderBinding } from '@sentinel/core'
+import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents, applyProviderBinding, resolveWindowsBinary } from '@sentinel/core'
 import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult, ManualGateDecision } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
 import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, PermissionAskData, LiveEventData, SkillEntry, SkillWorkspaceKind, SkillWorkspaceRef, ProviderProfile } from '../shared/ipc-types'
@@ -1174,6 +1176,29 @@ function registerIpcHandlers(): void {
       }
     }
     throw new Error(lastError)
+  })
+
+  // Model list from the local opencode CLI (`opencode models`): every
+  // model this machine can actually run - Zen free tier, authenticated
+  // providers, global-config providers. Cached ~5 minutes.
+  let modelsCache: { models: string[]; at: number } | null = null
+  ipcMain.handle(IPC.MODELS_LIST, async () => {
+    if (modelsCache && Date.now() - modelsCache.at < 5 * 60_000) {
+      return { ok: true, models: modelsCache.models }
+    }
+    const bin =
+      process.platform === 'win32' ? resolveWindowsBinary('opencode') : 'opencode'
+    const { stdout } = await promisify(execFile)(bin, ['models'], {
+      timeout: 15_000,
+      encoding: 'utf-8',
+      maxBuffer: 1024 * 1024,
+    })
+    const models = stdout
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => /^[a-z0-9_-]+\/\S+$/i.test(l))
+    modelsCache = { models, at: Date.now() }
+    return { ok: true, models }
   })
 }
 

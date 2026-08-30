@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { TaskInfo, TaskStatus, TaskRunRecord } from '@sentinel/core'
 import { ArrowLeft, Play, Pause, Trash2, RefreshCw, FolderOpen, FileText, Clock, Radio, Square, ShieldAlert } from 'lucide-react'
 import { useI18n } from '../../hooks/useI18n'
+import { useModelOptions } from '../../hooks/useModels'
 import type { TreeNode, OutputFile, PermissionAskData, LiveEventData, ProviderProfile } from '../../../../shared/ipc-types'
 
 interface TaskDetailProps {
@@ -239,10 +240,17 @@ function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => voi
   const [sessionSaving, setSessionSaving] = useState(false)
   const [profiles, setProfiles] = useState<ProviderProfile[]>([])
   const [bindingSaving, setBindingSaving] = useState(false)
+  const modelOptions = useModelOptions()
+  const [modelDraft, setModelDraft] = useState(config.execution.model ?? '')
+  const [modelSaving, setModelSaving] = useState(false)
 
   useEffect(() => {
     window.api.listProviders().then(setProfiles).catch(() => setProfiles([]))
   }, [])
+
+  useEffect(() => {
+    setModelDraft(config.execution.model ?? '')
+  }, [config.execution.model])
 
   const changeSession = async (session: 'fresh' | 'continue' | 'fork') => {
     setSessionSaving(true)
@@ -261,6 +269,18 @@ function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => voi
       onRefresh()
     } finally {
       setBindingSaving(false)
+    }
+  }
+
+  const changeModel = async (model: string) => {
+    const next = model.trim() || undefined
+    if ((config.execution.model ?? '') === (next ?? '')) return
+    setModelSaving(true)
+    try {
+      await window.api.updateTask(config.name, { execution: { model: next } })
+      onRefresh()
+    } finally {
+      setModelSaving(false)
     }
   }
 
@@ -330,6 +350,34 @@ function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => voi
           {bindingSaving && <span className="text-xs text-[var(--color-text-dim)]">{t('detail.saving')}</span>}
         </div>
         <p className="text-xs text-[var(--color-text-dim)] mt-1">{t('detail.providerBindingHint')}</p>
+      </div>
+
+      {/* Model override (editable) */}
+      <div>
+        <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">{t('create.model')}</h3>
+        <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-3 flex items-center gap-3">
+          <input
+            type="text"
+            value={modelDraft}
+            onChange={(e) => setModelDraft(e.target.value)}
+            onBlur={(e) => void changeModel(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            placeholder={t('detail.modelPlaceholder')}
+            list="detail-model-options"
+            className="flex-1 bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
+                       px-3 py-1.5 text-sm font-mono text-[var(--color-text)]
+                       focus:outline-none focus:border-[var(--color-blue)] transition-colors"
+          />
+          <datalist id="detail-model-options">
+            {modelOptions.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.free ? `${m.value} · ${t('models.free')}` : m.value}
+              </option>
+            ))}
+          </datalist>
+          {modelSaving && <span className="text-xs text-[var(--color-text-dim)]">{t('detail.saving')}</span>}
+        </div>
+        <p className="text-xs text-[var(--color-text-dim)] mt-1">{t('detail.modelHint')}</p>
       </div>
 
       {/* Info grid */}

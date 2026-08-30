@@ -70,6 +70,7 @@ const api: ExposedAPI = {
   deleteProvider: (id) => ipcRenderer.invoke(IPC.PROVIDERS_DELETE, id),
   bindTaskProvider: (name, profileId) => ipcRenderer.invoke(IPC.TASK_BIND_PROVIDER, name, profileId),
   fetchProviderModels: (baseUrl, apiKey) => ipcRenderer.invoke(IPC.PROVIDERS_FETCH_MODELS, { baseUrl, apiKey }),
+  getModelList: () => ipcRenderer.invoke(IPC.MODELS_LIST),
 
   // ── Serve runtime ──
   getRuntimeMode: () => ipcRenderer.invoke(IPC.RUNTIME_MODE_GET),

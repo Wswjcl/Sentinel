@@ -4,6 +4,9 @@
     "workspaces": "工作区",
     "workspacesDesc": "每个工作区 = 一个目录 = 一个任务及其 .opencode/ 配置"
   },
+  "models": {
+    "free": "免费"
+  },
   "sidebar": {
     "tasks": "任务",
     "flows": "流程",
@@ -79,6 +82,8 @@
     "usage": "用量",
     "servedBy": "执行端:",
     "providerGlobal": "全局配置",
+    "modelPlaceholder": "provider/model，留空用全局默认",
+    "modelHint": "模型覆盖：留空 = 绑定的档案或全局默认；输入框可自动补全本机可用模型",
     "providerBinding": "执行端绑定",
     "providerGlobalOption": "全局配置（默认）",
     "providerBindingHint": "绑定后该任务用自己的供应商端点与模型，覆盖全局配置（如 cc-switch 切换的活跃供应商）",

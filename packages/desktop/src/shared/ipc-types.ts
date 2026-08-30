@@ -73,6 +73,9 @@ export const IPC = {
   TASK_BIND_PROVIDER: 'tasks:bind-provider',
   PROVIDERS_FETCH_MODELS: 'providers:fetch-models',
 
+  // Model discovery (local `opencode models` output)
+  MODELS_LIST: 'models:list',
+
   // Serve runtime (R3)
   RUNTIME_MODE_GET: 'runtime:mode:get',
   RUNTIME_MODE_SET: 'runtime:mode:set',
@@ -319,6 +322,10 @@ export interface ExposedAPI {
   bindTaskProvider(name: string, profileId: string | null): Promise<{ ok: boolean }>
   /** Discover model ids on an OpenAI-compatible endpoint (GET /models). */
   fetchProviderModels(baseUrl: string, apiKey?: string): Promise<{ ok: boolean; models: string[] }>
+  /** Models the local opencode actually supports (`opencode models`,
+   *  cached ~5 min). Includes OpenCode Zen free models and every
+   *  authenticated provider. */
+  getModelList(): Promise<{ ok: boolean; models: string[] }>
 
   // Serve runtime
   getRuntimeMode(): Promise<RuntimeMode>

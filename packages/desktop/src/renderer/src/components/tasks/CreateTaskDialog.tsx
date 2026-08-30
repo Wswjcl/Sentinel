@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import type { CreateTaskOpts } from '../../../../shared/ipc-types'
 import { useI18n } from '../../hooks/useI18n'
+import { useModelOptions } from '../../hooks/useModels'
 
 const AVAILABLE_AGENTS = ['build', 'plan', 'explore', 'general']
 const AVAILABLE_TOOLS = [
@@ -36,6 +37,7 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { t } = useI18n()
+  const modelOptions = useModelOptions()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -252,10 +254,18 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 placeholder={t('create.modelPlaceholder')}
+                list="task-model-options"
                 className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
                            px-3 py-1.5 text-sm text-[var(--color-text)] placeholder-[var(--color-text-dim)]
                            focus:outline-none focus:border-[var(--color-blue)] transition-colors"
               />
+              <datalist id="task-model-options">
+                {modelOptions.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.free ? `${m.value} · ${t('models.free')}` : m.value}
+                  </option>
+                ))}
+              </datalist>
             </div>
             <div className="w-32">
               <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">

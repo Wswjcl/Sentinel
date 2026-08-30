@@ -3,6 +3,7 @@ import { ArrowLeft, Play, Plus, Trash2, Save, RotateCcw, Check, X, Download, Shi
 import type { FlowConfig, FlowNode, FlowNodeStatus, FlowNodeRun, FlowRun } from '@sentinel/core'
 import { edgeTarget, edgeCondition } from '../../lib/flow-edges'
 import { copyToClipboard } from '../../lib/clipboard'
+import { useModelOptions } from '../../hooks/useModels'
 import type { FlowInfo } from '../../../../shared/ipc-types'
 import { useI18n } from '../../hooks/useI18n'
 import FlowCanvas from './FlowCanvas'
@@ -19,6 +20,7 @@ const labelCls = 'block text-xs font-medium text-[var(--color-text-muted)] mb-1'
 
 export default function FlowDetail({ name, onBack }: FlowDetailProps) {
   const { t } = useI18n()
+  const modelOptions = useModelOptions()
   const [info, setInfo] = useState<FlowInfo | null>(null)
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
   const [liveStatuses, setLiveStatuses] = useState<Record<string, FlowNodeStatus>>({})
@@ -646,7 +648,15 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                       onBlur={(e) => updateNode(selectedNode!, { model: e.target.value.trim() || undefined })}
                       className={`${inputCls} font-mono`}
                       placeholder={t('flows.nodeModelPlaceholder')}
+                      list="flow-node-model-options"
                     />
+                    <datalist id="flow-node-model-options">
+                      {modelOptions.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.free ? `${m.value} · ${t('models.free')}` : m.value}
+                        </option>
+                      ))}
+                    </datalist>
                     <p className="text-xs text-[var(--color-text-dim)] mt-1">
                       {t('flows.nodeModelHint')}
                     </p>
