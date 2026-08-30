@@ -77,6 +77,8 @@
     "exit": "exit",
     "duration": "Duration:",
     "usage": "Usage",
+    "servedBy": "Served by",
+    "providerGlobal": "global config",
     "toolCalls": "Tool calls ({{count}})",
     "session": "Session",
     "live": "Live",
@@ -240,7 +242,8 @@
     "injectUpstream": "Auto-attach upstream results as context",
     "injectUpstreamHint": "Appends direct dependencies' outputs (errors when failed) to the prompt - no {node.output} placeholders needed",
     "copy": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "servedBy": "Served by"
   },
   "scheduler": {
     "title": "Scheduler",

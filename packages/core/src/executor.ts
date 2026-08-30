@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { OpenCodeEventParser } from './opencode-events.js'
+import { resolveProviderProvenance } from './provider-config.js'
 import type { TaskConfig, TaskRunRecord } from './types.js'
 
 /**
@@ -134,6 +135,14 @@ export async function executeTask(
   }
 
   args.push(effectivePrompt)
+
+  // Provider provenance: which provider/model/endpoint will serve this run
+  // (workspace .opencode config overrides global; exec.model pins it).
+  const provenance = resolveProviderProvenance(taskDir, exec.model)
+  if (provenance.provider) record.provider = provenance.provider
+  if (provenance.model) record.modelUsed = provenance.model
+  if (provenance.endpoint) record.endpoint = provenance.endpoint
+  if (provenance.source) record.providerSource = provenance.source
 
   return new Promise((resolve) => {
     let combinedOutput = ''

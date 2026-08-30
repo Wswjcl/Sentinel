@@ -301,6 +301,15 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
               ⧉ {nr.taskRecordId.slice(0, 8)}
             </span>
           )}
+          {(nr.provider || nr.modelUsed) && (
+            <span className="text-[var(--color-text-dim)]" title={nr.endpoint ?? ''}>
+              {t('flows.servedBy')}{' '}
+              <span className="text-[var(--color-text-muted)]">
+                {[nr.provider, nr.modelUsed].filter(Boolean).join('/')}
+              </span>
+              {nr.endpoint && <> · <span className="font-mono">{nr.endpoint}</span></>}
+            </span>
+          )}
         </div>
         {nr.skipReason && (
           <div className="text-xs text-[var(--color-text-dim)]">

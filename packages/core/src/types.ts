@@ -123,6 +123,14 @@ export interface TaskRunRecord {
   verificationPassed?: boolean
   /** Agent Loop: verification result message / error details */
   verificationOutput?: string
+  /** Provider provenance (v3.5.0): which provider/model actually served
+   *  this run. `providerSource` says which config layer defined it -
+   *  'workspace' (task .opencode config or an explicit model override)
+   *  or 'global' (e.g. a cc-switch-managed global config). */
+  provider?: string
+  modelUsed?: string
+  endpoint?: string
+  providerSource?: 'workspace' | 'global'
 }
 
 export interface TaskInfo {
@@ -249,6 +257,11 @@ export interface FlowNodeRun {
   taskRecordId?: string
   /** Whether the AI took over a manual node. */
   aiTakeover?: boolean
+  /** Provider provenance (v3.5.0) - copied from the task run record. */
+  provider?: string
+  modelUsed?: string
+  endpoint?: string
+  providerSource?: 'workspace' | 'global'
 }
 
 export interface FlowRun {

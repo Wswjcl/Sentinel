@@ -22,6 +22,7 @@ import { createServer } from 'node:net'
 import { randomUUID } from 'node:crypto'
 import { resolveWindowsBinary } from './executor.js'
 import { OpenCodeEventParser } from './opencode-events.js'
+import { resolveProviderProvenance } from './provider-config.js'
 import type { TaskConfig, TaskRunRecord } from './types.js'
 
 // ─── Types ──────────────────────────────────────────────────
@@ -417,6 +418,18 @@ export class OpenCodeServer {
         body.model = { providerID, modelID }
       }
       if (exec.agent && exec.agent !== 'default') body.agent = exec.agent
+
+      // Provider provenance: workspace .opencode config overrides global;
+      // the body.model override (task execution.model) pins the model.
+      const bodyModel = body.model as { providerID: string; modelID: string } | undefined
+      const provenance = resolveProviderProvenance(
+        taskDir,
+        bodyModel ? `${bodyModel.providerID}/${bodyModel.modelID}` : undefined,
+      )
+      if (provenance.provider) record.provider = provenance.provider
+      if (provenance.model) record.modelUsed = provenance.model
+      if (provenance.endpoint) record.endpoint = provenance.endpoint
+      if (provenance.source) record.providerSource = provenance.source
 
       let response: { info?: Record<string, unknown>; parts?: unknown[] } | undefined
       let runError: string | undefined

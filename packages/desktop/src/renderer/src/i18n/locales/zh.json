@@ -77,6 +77,8 @@
     "exit": "退出码",
     "duration": "耗时:",
     "usage": "用量",
+    "servedBy": "执行端:",
+    "providerGlobal": "全局配置",
     "toolCalls": "工具调用 ({{count}})",
     "session": "会话",
     "live": "实时",
@@ -240,7 +242,8 @@
     "injectUpstream": "自动附加上游结果作为上下文",
     "injectUpstreamHint": "执行时把直接依赖节点的输出（失败时为错误信息）附加到提示词，无需手写 {node.output}",
     "copy": "复制",
-    "copied": "已复制"
+    "copied": "已复制",
+    "servedBy": "执行端:"
   },
   "scheduler": {
     "title": "调度器",

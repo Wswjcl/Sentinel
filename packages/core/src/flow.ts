@@ -613,6 +613,11 @@ export class FlowEngine {
       opencodeBin: this.opencodeBin,
     })
     nr.taskRecordId = result.record.id
+    // Surface provider provenance on the node for the run inspector
+    if (result.record.provider) nr.provider = result.record.provider
+    if (result.record.modelUsed) nr.modelUsed = result.record.modelUsed
+    if (result.record.endpoint) nr.endpoint = result.record.endpoint
+    if (result.record.providerSource) nr.providerSource = result.record.providerSource
 
     if (result.record.status !== 'success') {
       throw new Error(result.record.error ?? `agent exited with code ${result.record.exitCode}`)

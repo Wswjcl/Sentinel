@@ -605,6 +605,16 @@ function HistoryTab({ history }: { history: TaskRunRecord[] }) {
                 {record.cost ? <> · ${record.cost.toFixed(4)}</> : null}
               </p>
             )}
+            {(record.provider || record.modelUsed) && (
+              <p className="text-xs text-[var(--color-text-dim)] mt-1">
+                {t('detail.servedBy')}{' '}
+                {record.provider && <span className="text-[var(--color-text-muted)]">{record.provider}</span>}
+                {record.provider && record.modelUsed && ' / '}
+                {record.modelUsed && <span className="font-mono">{record.modelUsed}</span>}
+                {record.endpoint && <> · <span className="font-mono">{record.endpoint}</span></>}
+                {record.providerSource === 'global' && <> · {t('detail.providerGlobal')}</>}
+              </p>
+            )}
             {record.toolCalls && record.toolCalls.length > 0 && (
               <details className="mt-1">
                 <summary className="text-xs text-[var(--color-text-muted)] cursor-pointer select-none">
