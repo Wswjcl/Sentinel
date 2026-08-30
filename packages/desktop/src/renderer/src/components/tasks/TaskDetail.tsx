@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { TaskInfo, TaskStatus, TaskRunRecord } from '@sentinel/core'
 import { ArrowLeft, Play, Pause, Trash2, RefreshCw, FolderOpen, FileText, Clock, Radio, Square, ShieldAlert } from 'lucide-react'
 import { useI18n } from '../../hooks/useI18n'
-import type { TreeNode, OutputFile, PermissionAskData, LiveEventData } from '../../../../shared/ipc-types'
+import type { TreeNode, OutputFile, PermissionAskData, LiveEventData, ProviderProfile } from '../../../../shared/ipc-types'
 
 interface TaskDetailProps {
   task: TaskInfo
@@ -237,6 +237,12 @@ function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => voi
   const { config, status, lastRun, nextRun, runCount } = task
   const { t } = useI18n()
   const [sessionSaving, setSessionSaving] = useState(false)
+  const [profiles, setProfiles] = useState<ProviderProfile[]>([])
+  const [bindingSaving, setBindingSaving] = useState(false)
+
+  useEffect(() => {
+    window.api.listProviders().then(setProfiles).catch(() => setProfiles([]))
+  }, [])
 
   const changeSession = async (session: 'fresh' | 'continue' | 'fork') => {
     setSessionSaving(true)
@@ -245,6 +251,16 @@ function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => voi
       onRefresh()
     } finally {
       setSessionSaving(false)
+    }
+  }
+
+  const changeBinding = async (profileId: string) => {
+    setBindingSaving(true)
+    try {
+      await window.api.bindTaskProvider(config.name, profileId || null)
+      onRefresh()
+    } finally {
+      setBindingSaving(false)
     }
   }
 
@@ -290,6 +306,30 @@ function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => voi
           </select>
           {sessionSaving && <span className="text-xs text-[var(--color-text-dim)]">{t('detail.saving')}</span>}
         </div>
+      </div>
+
+      {/* Provider binding (editable) */}
+      <div>
+        <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">{t('detail.providerBinding')}</h3>
+        <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-3 flex items-center gap-3">
+          <select
+            value={config.execution.providerProfile ?? ''}
+            disabled={bindingSaving}
+            onChange={(e) => void changeBinding(e.target.value)}
+            className="flex-1 bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
+                       px-3 py-1.5 text-sm text-[var(--color-text)]
+                       focus:outline-none focus:border-[var(--color-blue)] transition-colors"
+          >
+            <option value="">{t('detail.providerGlobalOption')}</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} ({p.provider}/{p.model})
+              </option>
+            ))}
+          </select>
+          {bindingSaving && <span className="text-xs text-[var(--color-text-dim)]">{t('detail.saving')}</span>}
+        </div>
+        <p className="text-xs text-[var(--color-text-dim)] mt-1">{t('detail.providerBindingHint')}</p>
       </div>
 
       {/* Info grid */}

@@ -64,6 +64,12 @@ const api: ExposedAPI = {
   chooseTasksDir: () => ipcRenderer.invoke(IPC.TASKS_DIR_CHOOSE),
   setTasksDir: (dir, migrate) => ipcRenderer.invoke(IPC.TASKS_DIR_SET, { dir, migrate }),
 
+  // ── Provider profiles ──
+  listProviders: () => ipcRenderer.invoke(IPC.PROVIDERS_LIST),
+  saveProvider: (profile) => ipcRenderer.invoke(IPC.PROVIDERS_SAVE, profile),
+  deleteProvider: (id) => ipcRenderer.invoke(IPC.PROVIDERS_DELETE, id),
+  bindTaskProvider: (name, profileId) => ipcRenderer.invoke(IPC.TASK_BIND_PROVIDER, name, profileId),
+
   // ── Serve runtime ──
   getRuntimeMode: () => ipcRenderer.invoke(IPC.RUNTIME_MODE_GET),
   setRuntimeMode: (mode) => ipcRenderer.invoke(IPC.RUNTIME_MODE_SET, mode),

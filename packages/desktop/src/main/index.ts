@@ -1,12 +1,12 @@
 import { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage, Notification, dialog } from 'electron'
-import { promises as fs, readFileSync } from 'node:fs'
+import { promises as fs, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, resolve, dirname, basename, parse } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents } from '@sentinel/core'
+import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents, applyProviderBinding } from '@sentinel/core'
 import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult, ManualGateDecision } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
-import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, PermissionAskData, LiveEventData, SkillEntry, SkillWorkspaceKind, SkillWorkspaceRef } from '../shared/ipc-types'
+import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, PermissionAskData, LiveEventData, SkillEntry, SkillWorkspaceKind, SkillWorkspaceRef, ProviderProfile } from '../shared/ipc-types'
 
 // ─── Globals ───────────────────────────────────────────────────────
 
@@ -1091,6 +1091,113 @@ function registerIpcHandlers(): void {
     app.relaunch()
     app.exit(0)
   })
+
+  // ── Provider profiles (userData/providers.json) ──
+
+  ipcMain.handle(IPC.PROVIDERS_LIST, () => listProviderProfiles())
+
+  ipcMain.handle(IPC.PROVIDERS_SAVE, (_e, profile: ProviderProfile) => {
+    if (!profile.name?.trim() || !profile.provider?.trim() || !profile.model?.trim()) {
+      throw new Error('name/provider/model are required')
+    }
+    const profiles = listProviderProfiles()
+    const id = profile.id?.trim() || slugify(profile.name)
+    if (!profile.id?.trim() && profiles.some((p) => p.id === id)) {
+      throw new Error(`Profile already exists: ${id}`)
+    }
+    const next = { ...profile, id }
+    const idx = profiles.findIndex((p) => p.id === id)
+    if (idx >= 0) profiles[idx] = next
+    else profiles.push(next)
+    saveProviderProfiles(profiles)
+    return { ok: true, profile: next }
+  })
+
+  ipcMain.handle(IPC.PROVIDERS_DELETE, (_e, id: string) => {
+    saveProviderProfiles(listProviderProfiles().filter((p) => p.id !== id))
+    return { ok: true }
+  })
+
+  // Bind/unbind a provider profile on a task: compiles the profile into
+  // the task workspace's .opencode config (field-level merge) and records
+  // the profile id in task.yaml.
+  ipcMain.handle(IPC.TASK_BIND_PROVIDER, async (_e, name: string, profileId: string | null) => {
+    const dir = store.getTaskDir(name)
+    const config = await store.getConfig(name)
+    if (profileId) {
+      const profile = listProviderProfiles().find((p) => p.id === profileId)
+      if (!profile) throw new Error(`Unknown provider profile: ${profileId}`)
+      await applyProviderBinding(dir, {
+        profileId: profile.id,
+        provider: profile.provider,
+        model: profile.model,
+        baseUrl: profile.baseUrl,
+        apiKey: profile.apiKey,
+      })
+      config.execution.providerProfile = profile.id
+    } else {
+      await applyProviderBinding(dir, null)
+      delete config.execution.providerProfile
+    }
+    await store.saveConfig(name, config)
+    return { ok: true }
+  })
+}
+
+// ─── Provider profiles storage (userData/providers.json) ───────────
+
+function providersFile(): string {
+  return join(app.getPath('userData'), 'providers.json')
+}
+
+function listProviderProfiles(): ProviderProfile[] {
+  try {
+    const raw = readFileSync(providersFile(), 'utf-8')
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed.profiles) ? parsed.profiles : []
+  } catch {
+    return []
+  }
+}
+
+function saveProviderProfiles(profiles: ProviderProfile[]): void {
+  const file = providersFile()
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, JSON.stringify({ version: 1, profiles }, null, 2), 'utf-8')
+}
+
+function slugify(name: string): string {
+  return (
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || `profile-${Date.now()}`
+  )
+}
+
+/** Recompile every bound task's workspace config from its profile -
+ *  keeps endpoints/keys in sync after a profile edit or key rotation. */
+async function recompileProviderBindings(): Promise<void> {
+  const profiles = listProviderProfiles()
+  for (const name of await store.listTasks()) {
+    try {
+      const config = await store.getConfig(name)
+      const profileId = config.execution.providerProfile
+      if (!profileId) continue
+      const profile = profiles.find((p) => p.id === profileId)
+      if (!profile) continue
+      await applyProviderBinding(store.getTaskDir(name), {
+        profileId: profile.id,
+        provider: profile.provider,
+        model: profile.model,
+        baseUrl: profile.baseUrl,
+        apiKey: profile.apiKey,
+      })
+    } catch (err) {
+      console.error(`[sentinel] provider recompile failed for ${name}:`, err)
+    }
+  }
 }
 
 // ─── System Tray ────────────────────────────────────────────────────
@@ -1268,6 +1375,9 @@ app.whenReady().then(async () => {
   await loadRuntimeMode()
   await store.init()
   await flowStore.init()
+  // Recompile provider bindings so profile edits (endpoint/key rotation)
+  // propagate to all bound task workspaces
+  void recompileProviderBindings()
   // A quit while a flow was running (e.g. waiting on a manual gate)
   // leaves the run stuck at 'running' with no live engine to finish
   // it - mark those runs failed so history reflects reality.

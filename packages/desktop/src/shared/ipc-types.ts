@@ -66,6 +66,12 @@ export const IPC = {
   TASKS_DIR_CHOOSE: 'tasks:dir:choose',
   TASKS_DIR_SET: 'tasks:dir:set',
 
+  // Provider profiles (cc-switch-style, task-level bindings)
+  PROVIDERS_LIST: 'providers:list',
+  PROVIDERS_SAVE: 'providers:save',
+  PROVIDERS_DELETE: 'providers:delete',
+  TASK_BIND_PROVIDER: 'tasks:bind-provider',
+
   // Serve runtime (R3)
   RUNTIME_MODE_GET: 'runtime:mode:get',
   RUNTIME_MODE_SET: 'runtime:mode:set',
@@ -204,6 +210,22 @@ export interface TasksDirInfo {
   overridden: boolean
 }
 
+// ─── Provider profiles (cc-switch-style, task-level bindings) ──────
+
+/** A named endpoint+key+model combo. Compiled into the bound task
+ *  workspace's .opencode config so the task overrides the global
+ *  provider; secrets never leave the local file. */
+export interface ProviderProfile {
+  id: string
+  name: string
+  /** OpenCode provider id (e.g. "zai-coding-plan"). */
+  provider: string
+  /** Model id within the provider (e.g. "glm-5.2"). */
+  model: string
+  baseUrl?: string
+  apiKey?: string
+}
+
 // ─── Exposed API (preload -> renderer) ──────────────────────────────
 
 export interface ExposedAPI {
@@ -285,6 +307,15 @@ export interface ExposedAPI {
   /** Switch the tasks directory. migrate=true moves workspaces living
    *  inside the current tasks dir into the new one. */
   setTasksDir(dir: string, migrate: boolean): Promise<{ ok: boolean; moved: number }>
+
+  // Provider profiles
+  listProviders(): Promise<ProviderProfile[]>
+  /** Upsert by id (id generated from the name when absent). */
+  saveProvider(profile: ProviderProfile): Promise<{ ok: boolean; profile: ProviderProfile }>
+  deleteProvider(id: string): Promise<{ ok: boolean }>
+  /** Bind/unbind a profile on a task (null unbinds). Compiles the
+   *  profile into the task workspace's .opencode config. */
+  bindTaskProvider(name: string, profileId: string | null): Promise<{ ok: boolean }>
 
   // Serve runtime
   getRuntimeMode(): Promise<RuntimeMode>

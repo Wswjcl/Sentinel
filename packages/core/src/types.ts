@@ -17,6 +17,12 @@ export interface TaskExecution {
    *  - 'fork': branch off the last run's session (--session --fork),
    *    history is inherited but the original session stays untouched */
   session?: 'fresh' | 'continue' | 'fork'
+  /** Provider binding (v3.5.0): id of a desktop-managed provider profile.
+   *  The profile's endpoint/key/model are compiled into the task
+   *  workspace's .opencode/opencode.json (field-level merge) so this task
+   *  overrides the global provider (e.g. the cc-switch-managed one).
+   *  Tasks without a binding use the global config as before. */
+  providerProfile?: string
   retry?: {
     max: number
     delay: number
