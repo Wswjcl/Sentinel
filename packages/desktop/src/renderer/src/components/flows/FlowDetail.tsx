@@ -332,7 +332,7 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                   : <><Copy className="w-3 h-3" />{t('flows.copy')}</>}
               </button>
             </div>
-            <pre className="text-xs text-[var(--color-red)] bg-[var(--color-red)]/10 rounded-lg p-2
+            <pre className="selectable cursor-text text-xs text-[var(--color-red)] bg-[var(--color-red)]/10 rounded-lg p-2
                            whitespace-pre-wrap break-all max-h-40 overflow-auto font-mono">{nr.error}</pre>
           </div>
         )}
@@ -354,7 +354,7 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
             )}
           </div>
           {nr.output ? (
-            <pre className="text-xs text-[var(--color-text)] bg-[var(--color-hover)] rounded-lg p-2
+            <pre className="selectable cursor-text text-xs text-[var(--color-text)] bg-[var(--color-hover)] rounded-lg p-2
                            whitespace-pre-wrap break-words max-h-64 overflow-auto font-mono">{nr.output}</pre>
           ) : (
             <span className="text-xs text-[var(--color-text-dim)]">{t('flows.noOutput')}</span>
