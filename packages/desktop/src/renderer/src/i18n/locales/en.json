@@ -142,7 +142,7 @@
     "projectDir": "Project Directory",
     "projectDirPlaceholder": "/path/to/project",
     "projectDirRequired": "Project directory is required",
-    "scheduleType": "Schedule Type",
+    "scheduleType": "Schedule",
     "cron": "Cron",
     "interval": "Interval",
     "once": "Once",
