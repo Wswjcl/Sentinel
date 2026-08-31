@@ -274,6 +274,10 @@ export interface FlowNodeRun {
   modelUsed?: string
   endpoint?: string
   providerSource?: 'workspace' | 'global'
+  /** Token usage of the AI step, copied from the task run record. */
+  tokens?: TokenUsage
+  /** Cost in USD of the AI step, copied from the task run record. */
+  cost?: number
 }
 
 export interface FlowRun {

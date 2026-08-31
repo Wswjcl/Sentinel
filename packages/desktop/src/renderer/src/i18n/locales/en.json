@@ -107,6 +107,7 @@
     "duration": "Duration:",
     "usage": "Usage",
     "servedBy": "Served by",
+    "runTotal": "Run total",
     "providerGlobal": "global config",
     "modelPlaceholder": "provider/model, empty = global default",
     "modelHint": "Model override: empty = bound profile or global default; the input autocompletes models available on this machine",

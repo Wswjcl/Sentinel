@@ -618,6 +618,10 @@ export class FlowEngine {
     if (result.record.modelUsed) nr.modelUsed = result.record.modelUsed
     if (result.record.endpoint) nr.endpoint = result.record.endpoint
     if (result.record.providerSource) nr.providerSource = result.record.providerSource
+    // Token/cost usage so the flow inspector can show per-node and
+    // per-run totals without loading the linked task record
+    if (result.record.tokens) nr.tokens = result.record.tokens
+    if (result.record.cost !== undefined) nr.cost = result.record.cost
 
     if (result.record.status !== 'success') {
       throw new Error(result.record.error ?? `agent exited with code ${result.record.exitCode}`)

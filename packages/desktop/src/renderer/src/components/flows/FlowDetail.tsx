@@ -272,6 +272,24 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
     return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${s % 60}s`
   }
 
+  /** Summed token usage of a run's AI nodes; undefined when no node
+   *  reported usage (e.g. all-script flows or records from older runs). */
+  const runTokenTotals = (run: FlowRun): { total: number; output: number; cost: number } | undefined => {
+    let total = 0
+    let output = 0
+    let cost = 0
+    let any = false
+    for (const nr of Object.values(run.nodes)) {
+      if (nr.tokens) {
+        any = true
+        total += nr.tokens.total
+        output += nr.tokens.output
+      }
+      if (nr.cost) cost += nr.cost
+    }
+    return any ? { total, output, cost } : undefined
+  }
+
   /** Node run inspector: full output / failure reason / timing for one
    *  node of one run - the "why did it fail / what did it produce" view. */
   const nodeInspector = (run: FlowRun, nr: FlowNodeRun) => {
@@ -310,6 +328,17 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                 {[nr.provider, nr.modelUsed].filter(Boolean).join('/')}
               </span>
               {nr.endpoint && <> · <span className="font-mono">{nr.endpoint}</span></>}
+            </span>
+          )}
+          {(nr.tokens || nr.cost !== undefined) && (
+            <span className="text-[var(--color-text-dim)]">
+              {nr.tokens && (
+                <>
+                  {nr.tokens.total.toLocaleString()} tokens ({nr.tokens.output.toLocaleString()} out)
+                </>
+              )}
+              {nr.tokens && nr.cost ? ' · ' : ''}
+              {nr.cost ? <>${nr.cost.toFixed(4)}</> : null}
             </span>
           )}
         </div>
@@ -527,6 +556,19 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
                         )
                       })}
                     </div>
+                    {(() => {
+                      const totals = runTokenTotals(run)
+                      if (!totals) return null
+                      return (
+                        <div className="mt-1 text-[var(--color-text-dim)]">
+                          {t('flows.runTotal')}:{' '}
+                          <span className="text-[var(--color-text-muted)]">
+                            {totals.total.toLocaleString()} tokens ({totals.output.toLocaleString()} out)
+                            {totals.cost ? <> · ${totals.cost.toFixed(4)}</> : null}
+                          </span>
+                        </div>
+                      )
+                    })()}
                     {inspect?.runId === run.id && run.nodes[inspect.node] && nodeInspector(run, run.nodes[inspect.node])}
                   </div>
                 ))}

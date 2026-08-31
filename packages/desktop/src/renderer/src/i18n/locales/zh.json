@@ -107,6 +107,7 @@
     "duration": "耗时:",
     "usage": "用量",
     "servedBy": "执行端:",
+    "runTotal": "本次运行合计",
     "providerGlobal": "全局配置",
     "modelPlaceholder": "provider/model，留空用全局默认",
     "modelHint": "模型覆盖：留空 = 绑定的档案或全局默认；输入框可自动补全本机可用模型",
