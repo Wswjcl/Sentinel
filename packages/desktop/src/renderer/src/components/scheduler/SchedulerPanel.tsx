@@ -130,7 +130,7 @@ export default function SchedulerPanel() {
         <div
           ref={logContainerRef}
           onScroll={handleScroll}
-          className="flex-1 min-h-0 bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg overflow-y-auto p-3 font-mono text-xs"
+          className="selectable cursor-text flex-1 min-h-0 bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg overflow-y-auto p-3 font-mono text-xs"
         >
           {logs.length === 0 ? (
             <div className="text-[var(--color-text-dim)]">
