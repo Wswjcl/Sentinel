@@ -129,12 +129,14 @@ export class OpenCodeServer {
       }, 30000)
 
       const tryReady = async (): Promise<void> => {
+        if (settled) return
         try {
           const res = await fetch(`http://127.0.0.1:${port}/session`, {
             signal: AbortSignal.timeout(3000),
           })
           if (res.ok) {
             settled = true
+            clearInterval(poll)
             clearTimeout(timeout)
             server.port = port
             server.baseUrl = `http://127.0.0.1:${port}`
