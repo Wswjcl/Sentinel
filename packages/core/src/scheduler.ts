@@ -3,7 +3,7 @@ import { FlowStore } from './flow-store.js'
 import { FlowEngine } from './flow.js'
 import { runTaskExecution } from './runner.js'
 import type { ExecutorOptions, ExecutionResult } from './executor.js'
-import { shouldRunNow, shouldRunInterval } from './cron.js'
+import { shouldRunNow, shouldRunInterval, shouldRunAt } from './cron.js'
 import { sentinelEvents } from './events.js'
 import type { TaskInfo } from './types.js'
 
@@ -108,6 +108,14 @@ export class Scheduler {
           if (!info.lastRun) {
             shouldRun = true
           }
+        } else if (schedule.type === 'at') {
+          shouldRun = shouldRunAt(
+            schedule.expr,
+            schedule.interval,
+            info.lastRun ? new Date(info.lastRun) : null,
+            info.runCount,
+            schedule.maxRuns,
+          )
         }
 
         if (shouldRun) {
@@ -147,6 +155,14 @@ export class Scheduler {
           shouldRun = shouldRunInterval(schedule.expr, lastRun ? new Date(lastRun) : null)
         } else if (schedule.type === 'once') {
           shouldRun = !lastRun
+        } else if (schedule.type === 'at') {
+          shouldRun = shouldRunAt(
+            schedule.expr,
+            schedule.interval,
+            lastRun ? new Date(lastRun) : null,
+            runs.length,
+            schedule.maxRuns,
+          )
         }
 
         if (shouldRun) {

@@ -98,7 +98,15 @@ export interface CreateTaskOpts {
   name: string
   description?: string
   projectDir?: string
-  schedule?: { type?: string; expr?: string; timezone?: string }
+  schedule?: {
+    type?: string
+    expr?: string
+    timezone?: string
+    /** For type 'at': repeat cadence after the start time. */
+    interval?: string
+    /** For type 'at': cap on total runs. */
+    maxRuns?: number
+  }
   execution?: {
     prompt?: string
     model?: string

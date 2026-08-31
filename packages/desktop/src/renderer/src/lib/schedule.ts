@@ -66,22 +66,108 @@ export function weekdayName(weekday: number, locale: string): string {
   )
 }
 
-/** Localized one-line description of a schedule. */
-export function describeScheduleText(
-  type: 'cron' | 'interval' | 'once',
-  expr: string,
+// ─── 'at' schedules: start datetime + cadence + run cap ────────────
+
+/** Offset of a timezone at a given instant, in ms (positive = east of UTC). */
+function tzOffsetMs(utcMs: number, tz: string): number {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+  const parts: Record<string, string> = {}
+  for (const p of dtf.formatToParts(new Date(utcMs))) parts[p.type] = p.value
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour) % 24,
+    Number(parts.minute),
+    Number(parts.second),
+  )
+  return asUtc - utcMs
+}
+
+/** Wall-clock "YYYY-MM-DDTHH:mm" (interpreted in `tz`, default: system
+ *  timezone) -> UTC ISO string for storage in task.yaml. */
+export function zonedWallToUtcIso(wall: string, tz?: string): string {
+  const naiveMs = new Date(`${wall}:00Z`).getTime()
+  if (Number.isNaN(naiveMs)) return ''
+  if (!tz) return new Date(wall).toISOString()
+  const offset = tzOffsetMs(naiveMs, tz)
+  return new Date(naiveMs - offset).toISOString()
+}
+
+/** UTC ISO string -> wall-clock "YYYY-MM-DDTHH:mm" in `tz` (default:
+ *  system timezone), for datetime-local inputs. */
+export function utcIsoToZonedWall(iso: string, tz?: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const p = (n: number): string => String(n).padStart(2, '0')
+  if (!tz) {
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+  }
+  const dtf = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  const parts: Record<string, string> = {}
+  for (const part of dtf.formatToParts(d)) parts[part.type] = part.value
+  const hour = Number(parts.hour) % 24
+  return `${parts.year}-${parts.month}-${parts.day}T${p(hour)}:${parts.minute}`
+}
+
+/** Localized description of an 'at' schedule. */
+export function describeAtText(
+  schedule: { expr: string; interval?: string; maxRuns?: number },
   t: (key: string, opts?: Record<string, unknown>) => string,
   locale: string,
 ): string {
-  if (type === 'once') return t('schedule.descOnce')
-  if (type === 'interval') {
-    const match = /^(\d+)\s*(m|h|d)$/.exec(expr.trim())
-    if (!match) return expr
+  const start = new Date(schedule.expr)
+  const when = Number.isNaN(start.getTime())
+    ? schedule.expr
+    : start.toLocaleString(locale)
+  let text = t('schedule.descAtStart', { datetime: when })
+  if (schedule.interval) {
+    const match = /^(\d+)\s*(m|h|d)$/.exec(schedule.interval.trim())
+    if (match) {
+      const unit =
+        match[2] === 'm' ? t('schedule.unitMinutes') : match[2] === 'h' ? t('schedule.unitHours') : t('schedule.unitDays')
+      text += t('schedule.descRepeatEvery', { n: match[1], unit })
+    }
+  }
+  if (schedule.maxRuns !== undefined) {
+    text += t('schedule.descMaxRuns', { n: schedule.maxRuns })
+  }
+  return text
+}
+
+/** Localized one-line description of a schedule. */
+export function describeScheduleText(
+  schedule: { type: string; expr: string; interval?: string; maxRuns?: number },
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  locale: string,
+): string {
+  if (schedule.type === 'once') return t('schedule.descOnce')
+  if (schedule.type === 'at') return describeAtText(schedule, t, locale)
+  if (schedule.type === 'interval') {
+    const match = /^(\d+)\s*(m|h|d)$/.exec(schedule.expr.trim())
+    if (!match) return schedule.expr
     const n = match[1]
     const unit = match[2] === 'm' ? t('schedule.unitMinutes') : match[2] === 'h' ? t('schedule.unitHours') : t('schedule.unitDays')
     return t('schedule.descEveryN', { n, unit })
   }
-  const desc = describeCron(expr)
+  const desc = describeCron(schedule.expr)
   switch (desc.kind) {
     case 'every-minutes':
       return desc.minutes === 1
@@ -96,6 +182,6 @@ export function describeScheduleText(
     case 'weekly':
       return t('schedule.descWeekly', { day: weekdayName(desc.weekday, locale), time: desc.time })
     default:
-      return expr
+      return schedule.expr
   }
 }

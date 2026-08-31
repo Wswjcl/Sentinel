@@ -287,7 +287,7 @@ function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => voi
 
   const fields = [
     { label: t('detail.status'), value: t(`status.${status}`) },
-    { label: t('detail.schedule'), value: describeScheduleText(config.schedule.type, config.schedule.expr, t, locale) + (config.schedule.timezone ? ` · ${config.schedule.timezone}` : '') },
+    { label: t('detail.schedule'), value: describeScheduleText(config.schedule, t, locale) + (config.schedule.timezone ? ` · ${config.schedule.timezone}` : '') },
     { label: t('detail.timezone'), value: config.schedule.timezone ?? 'UTC' },
     { label: t('detail.model'), value: config.execution.model ?? 'default' },
     { label: t('detail.agent'), value: config.execution.agent ?? 'default' },

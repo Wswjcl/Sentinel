@@ -1,7 +1,13 @@
 export interface TaskSchedule {
-  type: 'cron' | 'interval' | 'once'
+  type: 'cron' | 'interval' | 'once' | 'at'
   expr: string
   timezone?: string
+  /** For type 'at' (v3.6.0): repeat cadence after the start time
+   *  (interval expression like "30m" / "2h" / "1d"). Omit for a single run. */
+  interval?: string
+  /** For type 'at': cap on total runs; the task auto-archives when
+   *  reached. Omit for unlimited. */
+  maxRuns?: number
 }
 
 export interface TaskExecution {

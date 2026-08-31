@@ -428,9 +428,11 @@ function registerIpcHandlers(): void {
       description: opts.description || opts.name,
       version: 1,
       schedule: {
-        type: (opts.schedule?.type as 'cron' | 'interval' | 'once') || 'cron',
+        type: (opts.schedule?.type as 'cron' | 'interval' | 'once' | 'at') || 'cron',
         expr: opts.schedule?.expr || '0 9 * * *',
-        timezone: opts.schedule?.timezone || 'Asia/Shanghai',
+        timezone: opts.schedule?.timezone,
+        interval: opts.schedule?.interval,
+        maxRuns: opts.schedule?.maxRuns,
       },
       execution: {
         prompt: opts.execution?.prompt || 'No prompt',

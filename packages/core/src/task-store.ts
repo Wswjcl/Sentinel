@@ -4,7 +4,7 @@ import { join, resolve, basename } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { TaskConfig, TaskInfo, TaskRunRecord, TaskStatus } from './types.js'
 import type { OpenCodeConfig } from './opencode-config.js'
-import { getNextRun } from './cron.js'
+import { getNextRun, nextAtRun } from './cron.js'
 
 const TASK_CONFIG_FILE = 'task.yaml'
 const HISTORY_FILE = '.history.json'
@@ -324,10 +324,17 @@ export class TaskStore {
 
     let nextRun: string | undefined
     try {
-      nextRun = getNextRun(
-        config.schedule.expr,
-        config.schedule.timezone,
-      ).toISOString()
+      nextRun =
+        config.schedule.type === 'at'
+          ? (nextAtRun(
+              config.schedule.expr,
+              config.schedule.interval,
+              lastRun ? new Date(lastRun) : null,
+            )?.toISOString() ?? undefined)
+          : getNextRun(
+              config.schedule.expr,
+              config.schedule.timezone,
+            ).toISOString()
     } catch {}
 
     // Status priority: persisted status > derived from history

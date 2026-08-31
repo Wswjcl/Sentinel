@@ -84,7 +84,62 @@ export function isValidSchedule(type: string, expr: string): boolean {
   if (type === 'cron') return isValidCron(expr)
   if (type === 'interval') return parseInterval(expr) !== null
   if (type === 'once') return expr.trim().length > 0
+  if (type === 'at') return !Number.isNaN(new Date(expr).getTime())
   return false
+}
+
+// ─── 'at' schedules: start datetime + optional cadence + run cap ──
+
+/** Whether an 'at' schedule is due right now: past its start time,
+ *  respecting the repeat cadence and the total-runs cap. */
+export function shouldRunAt(
+  expr: string,
+  interval: string | undefined,
+  lastRun: Date | null,
+  runCount: number,
+  maxRuns?: number,
+): boolean {
+  const start = new Date(expr).getTime()
+  if (Number.isNaN(start)) return false
+  if (maxRuns !== undefined && runCount >= maxRuns) return false
+  const now = Date.now()
+  if (now < start) return false
+  if (!interval) return runCount === 0
+  const intervalMs = parseInterval(interval)
+  if (intervalMs === null) return runCount === 0
+  return lastRun === null || now - lastRun.getTime() >= intervalMs
+}
+
+/** Whether a schedule has nothing left to run (auto-archive trigger):
+ *  always for 'once'; for 'at' when the run cap is reached, or when
+ *  there is no repeat cadence and the single run already happened. */
+export function isScheduleExhausted(
+  schedule: { type: string; interval?: string; maxRuns?: number },
+  runCount: number,
+): boolean {
+  if (schedule.type === 'once') return true
+  if (schedule.type === 'at') {
+    if (schedule.maxRuns !== undefined) return runCount >= schedule.maxRuns
+    return !schedule.interval && runCount >= 1
+  }
+  return false
+}
+
+/** Next scheduled run for an 'at' schedule, or null when finished. */
+export function nextAtRun(
+  expr: string,
+  interval: string | undefined,
+  lastRun: Date | null,
+): Date | null {
+  const start = new Date(expr)
+  if (Number.isNaN(start.getTime())) return null
+  if (!interval) return start.getTime() > Date.now() ? start : null
+  const intervalMs = parseInterval(interval)
+  if (intervalMs === null) return start.getTime() > Date.now() ? start : null
+  if (!lastRun || lastRun.getTime() < start.getTime()) {
+    return start.getTime() > Date.now() ? start : null
+  }
+  return new Date(lastRun.getTime() + intervalMs)
 }
 
 // ─── Human-readable schedule description ────────────────────

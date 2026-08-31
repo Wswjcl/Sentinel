@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { executeTask } from './executor.js'
 import type { ExecutorOptions, ExecutionResult } from './executor.js'
 import { runAgentLoop } from './agent-loop.js'
+import { isScheduleExhausted } from './cron.js'
 import { sentinelEvents } from './events.js'
 import { Notifier } from './notifier.js'
 import type { TaskStore } from './task-store.js'
@@ -103,8 +104,9 @@ export async function runTaskExecution(
       })
 
       const lastRecord = loopResult.records[loopResult.records.length - 1]
+      const runCount = (await taskStore.getHistory(name)).length
       const finalStatus: TaskStatus = loopResult.success
-        ? (config.schedule.type === 'once' ? 'archived' : 'scheduled')
+        ? (isScheduleExhausted(config.schedule, runCount) ? 'archived' : 'scheduled')
         : 'failed'
       await taskStore.setStatus(name, finalStatus)
       sentinelEvents.emit('task:status-changed', { name, status: finalStatus })
@@ -170,8 +172,8 @@ export async function runTaskExecution(
       await taskStore.saveHistory(name, history)
 
       if (result.record.status === 'success') {
-        // Auto-archive one-shot tasks after successful execution
-        finalStatus = config.schedule.type === 'once' ? 'archived' : 'scheduled'
+        // Auto-archive one-shot/exhausted schedules after successful execution
+        finalStatus = isScheduleExhausted(config.schedule, history.length) ? 'archived' : 'scheduled'
         await taskStore.setStatus(name, finalStatus)
         sentinelEvents.emit('task:run-completed', { name, record: result.record })
         sentinelEvents.emit('task:status-changed', { name, status: finalStatus })
