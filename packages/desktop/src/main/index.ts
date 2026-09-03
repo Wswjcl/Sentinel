@@ -5,8 +5,8 @@ import { promises as fs, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, resolve, dirname, basename, parse } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents, applyProviderBinding, resolveWindowsBinary, applyPermissionProfile, hasPermissionProfile } from '@sentinel/core'
-import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult, ManualGateDecision, PermissionProfile, PermissionAskRecord } from '@sentinel/core'
+import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents, applyProviderBinding, resolveWindowsBinary, applyPermissionProfile, hasPermissionProfile, aggregateUsage, monthToDate } from '@sentinel/core'
+import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult, ManualGateDecision, PermissionProfile, PermissionAskRecord, UsageRecordish, TaskBudget } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
 import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, PermissionAskData, LiveEventData, SkillEntry, SkillWorkspaceKind, SkillWorkspaceRef, ProviderProfile } from '../shared/ipc-types'
 
@@ -566,6 +566,19 @@ function registerIpcHandlers(): void {
       }
     }
     if (opts.execution?.skills) existing.execution.skills = opts.execution.skills
+    if (opts.budget !== undefined) {
+      const b = opts.budget
+      const has = (b.monthlyCostUsd !== undefined && b.monthlyCostUsd !== null) ||
+                  (b.monthlyTokens !== undefined && b.monthlyTokens !== null)
+      if (has) {
+        existing.budget = {
+          monthlyCostUsd: b.monthlyCostUsd ?? undefined,
+          monthlyTokens: b.monthlyTokens ?? undefined,
+        }
+      } else {
+        delete existing.budget
+      }
+    }
     if (opts.agentLoop !== undefined) {
       if (opts.agentLoop.enabled) {
         const v = opts.agentLoop.verification
@@ -1218,6 +1231,49 @@ function registerIpcHandlers(): void {
     else delete config.permissions
     await flowStore.saveConfig(name, config)
     return { ok: true }
+  })
+
+  // Usage aggregation across task histories and flow AI-node runs, plus
+  // month-to-date budget status per task. Pure local reads - opencode
+  // already reports per-run cost, so no pricing table is involved.
+  ipcMain.handle(IPC.USAGE_GET, async (_e, days: number) => {
+    const range = Math.max(1, Math.min(365, Number(days) || 30))
+    const records: UsageRecordish[] = []
+    const budgets: Array<{
+      source: string; sourceType: 'task' | 'flow'; budget: TaskBudget | null
+      monthCost: number; monthTokens: number; exceeded: boolean
+    }> = []
+    for (const name of await store.listTasks()) {
+      const config = await store.getConfig(name)
+      const hist = await store.getHistory(name)
+      const taskRecords: UsageRecordish[] = hist.map((r) => ({
+        source: name, sourceType: 'task', startedAt: r.startedAt,
+        tokens: r.tokens, cost: r.cost, modelUsed: r.modelUsed, provider: r.provider,
+      }))
+      records.push(...taskRecords)
+      const month = monthToDate(taskRecords)
+      const budget = config.budget ?? null
+      budgets.push({
+        source: name, sourceType: 'task', budget, monthCost: month.cost, monthTokens: month.tokens,
+        exceeded: Boolean(
+          (budget?.monthlyCostUsd !== undefined && month.cost >= budget.monthlyCostUsd) ||
+          (budget?.monthlyTokens !== undefined && month.tokens >= budget.monthlyTokens),
+        ),
+      })
+    }
+    for (const fname of await flowStore.listFlows()) {
+      const runs = await flowStore.getRuns(fname)
+      for (const run of runs) {
+        for (const nr of Object.values(run.nodes)) {
+          if (!nr.tokens && nr.cost === undefined) continue
+          records.push({
+            source: fname, sourceType: 'flow', startedAt: nr.startedAt ?? run.startedAt,
+            tokens: nr.tokens, cost: nr.cost, modelUsed: nr.modelUsed, provider: nr.provider,
+          })
+        }
+      }
+    }
+    return { summary: aggregateUsage(records, range), budgets }
   })
 
   // Discover models on an OpenAI-compatible endpoint (GET /models with

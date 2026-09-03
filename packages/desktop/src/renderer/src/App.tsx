@@ -7,12 +7,13 @@ import MainLayout from './components/layout/MainLayout'
 import TaskList from './components/tasks/TaskList'
 import TaskDetail from './components/tasks/TaskDetail'
 import SchedulerPanel from './components/scheduler/SchedulerPanel'
+import UsagePanel from './components/usage/UsagePanel'
 import SettingsPanel from './components/settings/SettingsPanel'
 import FlowsPanel from './components/flows/FlowsPanel'
 import SkillsPanel from './components/skills/SkillsPanel'
 import './i18n'
 
-type View = 'tasks' | 'flows' | 'skills' | 'scheduler' | 'settings'
+type View = 'tasks' | 'flows' | 'skills' | 'scheduler' | 'usage' | 'settings'
 
 function AppContent() {
   const [view, setView] = useState<View>('tasks')
@@ -47,6 +48,7 @@ function AppContent() {
       {view === 'flows' && <FlowsPanel />}
       {view === 'skills' && <SkillsPanel />}
       {view === 'scheduler' && <SchedulerPanel />}
+      {view === 'usage' && <UsagePanel />}
       {view === 'settings' && <SettingsPanel />}
     </MainLayout>
   )

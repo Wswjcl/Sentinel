@@ -1,6 +1,7 @@
 import type {
   TaskConfig, TaskInfo, TaskRunRecord, TaskStatus, AgentLoopConfig,
   FlowConfig, FlowRun, FlowNodeStatus, ManualGateDecision, PermissionProfile,
+  UsageSummary, TaskBudget,
 } from '@sentinel/core'
 
 // ─── IPC Channel Names (single source of truth) ────────────────────
@@ -75,6 +76,7 @@ export const IPC = {
   TASK_PERMISSION_SET: 'tasks:permission-set',
   FLOW_PERMISSION_GET: 'flows:permission-get',
   FLOW_PERMISSION_SET: 'flows:permission-set',
+  USAGE_GET: 'usage:get',
   PROVIDERS_FETCH_MODELS: 'providers:fetch-models',
 
   // Model discovery (local `opencode models` output)
@@ -97,6 +99,15 @@ export const IPC = {
 } as const
 
 // ─── Request / Response Types ──────────────────────────────────────
+
+export interface BudgetStatus {
+  source: string
+  sourceType: 'task' | 'flow'
+  budget: TaskBudget | null
+  monthCost: number
+  monthTokens: number
+  exceeded: boolean
+}
 
 export interface CreateTaskOpts {
   name: string
@@ -131,6 +142,7 @@ export interface CreateTaskOpts {
   allowTools?: string[]
   /** Permission preset applied to the workspace .opencode config at creation. */
   permissions?: PermissionProfile
+  budget?: TaskBudget
   denyTools?: string[]
   /** Loop Engineering: agent loop config for this task */
   agentLoop?: AgentLoopConfig
@@ -337,6 +349,7 @@ export interface ExposedAPI {
   getTaskPermission(name: string): Promise<{ profile: PermissionProfile | null; applied: boolean }>
   setTaskPermission(name: string, profile: PermissionProfile | null): Promise<{ ok: boolean }>
   getFlowPermission(name: string): Promise<{ profile: PermissionProfile | null; applied: boolean }>
+  getUsage(days: number): Promise<{ summary: UsageSummary; budgets: BudgetStatus[] }>
   setFlowPermission(name: string, profile: PermissionProfile | null): Promise<{ ok: boolean }>
   /** Discover model ids on an OpenAI-compatible endpoint (GET /models). */
   fetchProviderModels(baseUrl: string, apiKey?: string): Promise<{ ok: boolean; models: string[] }>

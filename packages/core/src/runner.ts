@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { monthToDate } from './usage.js'
+import type { UsageRecordish } from './usage.js'
 import { executeTask } from './executor.js'
 import type { ExecutorOptions, ExecutionResult } from './executor.js'
 import { runAgentLoop } from './agent-loop.js'
@@ -77,6 +79,45 @@ export async function runTaskExecution(
 
   const log = (level: string, msg: string): void => onLog?.(level, msg)
   const notifier = new Notifier({ onLog: (level, msg) => log(level, msg) })
+
+  // ── Monthly budget gate ──
+  // Month-to-date usage is computed from this task's own history, so it
+  // covers every run path (scheduled, manual, agent loop) with no extra
+  // storage. Applies to ALL runs: a cap that manual clicks could silently
+  // bypass would not be a cap.
+  const budget = config.budget
+  if (budget && (budget.monthlyCostUsd !== undefined || budget.monthlyTokens !== undefined)) {
+    const history = info.history ?? (await taskStore.getHistory(name))
+    const records: UsageRecordish[] = history.map((r) => ({
+      source: name,
+      sourceType: 'task',
+      startedAt: r.startedAt,
+      tokens: r.tokens,
+      cost: r.cost,
+    }))
+    const month = monthToDate(records)
+    const overCost = budget.monthlyCostUsd !== undefined && month.cost >= budget.monthlyCostUsd
+    const overTokens = budget.monthlyTokens !== undefined && month.tokens >= budget.monthlyTokens
+    if (overCost || overTokens) {
+      log(
+        'warn',
+        `[budget] Task ${name} skipped: month-to-date $${month.cost.toFixed(4)} / ${month.tokens.toLocaleString()} tokens reached its cap` +
+          ` ($${budget.monthlyCostUsd ?? '-'} / ${budget.monthlyTokens?.toLocaleString() ?? '-'})`,
+      )
+      await notifier.notifyBudgetExceeded(config, {
+        cost: month.cost,
+        tokens: month.tokens,
+        monthlyCostUsd: budget.monthlyCostUsd,
+        monthlyTokens: budget.monthlyTokens,
+      })
+      // The caller marked the task 'running' before invoking us - restore
+      // a sane status so a skipped run doesn't wedge the task.
+      const finalStatus: TaskStatus = info.status === 'running' ? 'scheduled' : info.status
+      await taskStore.setStatus(name, finalStatus)
+      sentinelEvents.emit('task:status-changed', { name, status: finalStatus })
+      return { ok: false, finalStatus, lastRecord: undefined }
+    }
+  }
 
   // ── Agent Loop path (Loop Engineering) ──
   if (config.agentLoop?.enabled) {

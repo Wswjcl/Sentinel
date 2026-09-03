@@ -88,6 +88,16 @@ export interface TaskConfig {
    *  config by applyPermissionProfile. Absent = no Sentinel-managed
    *  permission rules (opencode defaults / user's own config). */
   permissions?: PermissionProfile
+  /** Monthly budget cap: when month-to-date usage reaches either limit,
+   *  further runs of this task are skipped (with a webhook notice). */
+  budget?: TaskBudget
+}
+
+export interface TaskBudget {
+  /** Max month-to-date cost in USD (opencode-reported). */
+  monthlyCostUsd?: number
+  /** Max month-to-date total tokens. */
+  monthlyTokens?: number
 }
 
 /** Sentinel-managed permission card, compiled into the workspace

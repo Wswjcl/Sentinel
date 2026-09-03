@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { TaskInfo, TaskStatus, TaskRunRecord } from '@sentinel/core'
+import type { TaskInfo, TaskStatus, TaskRunRecord, TaskBudget } from '@sentinel/core'
 import { ArrowLeft, Play, Pause, Trash2, RefreshCw, FolderOpen, FileText, Clock, Radio, Square } from 'lucide-react'
 import { useI18n } from '../../hooks/useI18n'
 import { useModelOptions } from '../../hooks/useModels'
@@ -236,6 +236,82 @@ export default function TaskDetail({ task: initialTask, onBack }: TaskDetailProp
 
 // ─── Overview Tab ──────────────────────────────────────────────────
 
+/** Monthly budget editor: two optional caps, saved via updateTask.
+ *  When month-to-date usage reaches a cap, further runs of the task are
+ *  skipped with a webhook notice (see the budget gate in the runner). */
+function BudgetEditor({ taskName, budget, onRefresh }: { taskName: string; budget?: TaskBudget; onRefresh: () => void }) {
+  const { t } = useI18n()
+  const [cost, setCost] = useState(budget?.monthlyCostUsd?.toString() ?? '')
+  const [tokens, setTokens] = useState(budget?.monthlyTokens?.toString() ?? '')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setCost(budget?.monthlyCostUsd?.toString() ?? '')
+    setTokens(budget?.monthlyTokens?.toString() ?? '')
+  }, [budget])
+
+  const save = async (next: TaskBudget | null): Promise<void> => {
+    setSaving(true)
+    try {
+      await window.api.updateTask(taskName, { budget: next ?? { monthlyCostUsd: undefined, monthlyTokens: undefined } })
+      onRefresh()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputCls = `bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
+                    px-3 py-1.5 text-sm text-[var(--color-text)]
+                    focus:outline-none focus:border-[var(--color-blue)] transition-colors`
+
+  return (
+    <div>
+      <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">{t('detail.budgetTitle')}</h3>
+      <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-3 space-y-2">
+        <div className="flex items-center gap-3">
+          <label className="w-32 text-xs text-[var(--color-text-muted)] shrink-0">{t('detail.budgetCost')}</label>
+          <input
+            type="number" min={0} step="0.01" value={cost}
+            onChange={(e) => setCost(e.target.value)}
+            placeholder={t('detail.budgetUnlimited')}
+            className={`${inputCls} w-32`}
+          />
+          <label className="w-32 text-xs text-[var(--color-text-muted)] shrink-0">{t('detail.budgetTokens')}</label>
+          <input
+            type="number" min={0} step="1000" value={tokens}
+            onChange={(e) => setTokens(e.target.value)}
+            placeholder={t('detail.budgetUnlimited')}
+            className={`${inputCls} w-36`}
+          />
+          <div className="flex gap-2 ml-auto">
+            <button
+              onClick={() => void save({
+                monthlyCostUsd: cost.trim() ? Number(cost) : undefined,
+                monthlyTokens: tokens.trim() ? Number(tokens) : undefined,
+              })}
+              disabled={saving}
+              className="px-3 py-1 rounded-lg text-xs font-medium bg-[var(--color-green)] text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {t('detail.budgetSave')}
+            </button>
+            {(budget || cost || tokens) && (
+              <button
+                onClick={() => void save(null)}
+                disabled={saving}
+                className="px-3 py-1 rounded-lg text-xs font-medium bg-[var(--color-hover)]
+                           text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-50"
+              >
+                {t('detail.budgetClear')}
+              </button>
+            )}
+          </div>
+        </div>
+        <p className="text-xs text-[var(--color-text-dim)]">{t('detail.budgetHint')}</p>
+      </div>
+    </div>
+  )
+}
+
 function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => void }) {
   const { config, status, lastRun, nextRun, runCount } = task
   const { t, locale } = useI18n()
@@ -356,6 +432,9 @@ function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => voi
 
       {/* Permission card (editable) */}
       <PermissionCard kind="task" name={config.name} />
+
+      {/* Monthly budget (editable) */}
+      <BudgetEditor taskName={config.name} budget={config.budget} onRefresh={onRefresh} />
 
       {/* Model override (editable) */}
       <div>

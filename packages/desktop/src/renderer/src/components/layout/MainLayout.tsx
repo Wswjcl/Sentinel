@@ -5,7 +5,7 @@ import PermissionOverlay from './PermissionOverlay'
 
 interface MainLayoutProps {
   currentView: string
-  onViewChange: (view: 'tasks' | 'flows' | 'skills' | 'scheduler' | 'settings') => void
+  onViewChange: (view: 'tasks' | 'flows' | 'skills' | 'scheduler' | 'usage' | 'settings') => void
   children: ReactNode
 }
 

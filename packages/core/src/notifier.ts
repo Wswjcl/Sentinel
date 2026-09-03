@@ -86,6 +86,41 @@ export class Notifier {
     }
   }
 
+  /**
+   * Webhook notice when a task's monthly budget cap blocks a run. Sent
+   * whenever a webhook is configured - budget events are neither a run
+   * success nor a failure, so the on_success/on_failure flags don't apply.
+   */
+  async notifyBudgetExceeded(
+    config: TaskConfig,
+    usage: { cost: number; tokens: number; monthlyCostUsd?: number; monthlyTokens?: number },
+  ): Promise<void> {
+    const notify = config.notify
+    if (!notify?.webhook_url) return
+    const reasons: string[] = []
+    if (usage.monthlyCostUsd !== undefined) reasons.push(`$${usage.cost.toFixed(4)} >= $${usage.monthlyCostUsd}`)
+    if (usage.monthlyTokens !== undefined) reasons.push(`${usage.tokens.toLocaleString()} tokens >= ${usage.monthlyTokens.toLocaleString()}`)
+    const payload = {
+      task: config.name,
+      event: 'budget.exceeded',
+      status: 'skipped',
+      usage: {
+        month_cost_usd: Number(usage.cost.toFixed(6)),
+        month_tokens: usage.tokens,
+        limit_cost_usd: usage.monthlyCostUsd,
+        limit_tokens: usage.monthlyTokens,
+      },
+      message: `Monthly budget reached: ${reasons.join(', ')}`,
+      timestamp: new Date().toISOString(),
+    }
+    try {
+      await this.sendWebhook(notify.webhook_url, payload)
+      this.log('info', `Budget-exceeded webhook sent for task ${config.name}`)
+    } catch (err) {
+      this.log('warn', `Budget-exceeded webhook failed for task ${config.name}: ${String(err)}`)
+    }
+  }
+
   private sendWebhook(url: string, payload: Record<string, unknown>): Promise<void> {
     return new Promise((resolve, reject) => {
       const data = JSON.stringify(payload)
