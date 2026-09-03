@@ -622,6 +622,7 @@ export class FlowEngine {
     // per-run totals without loading the linked task record
     if (result.record.tokens) nr.tokens = result.record.tokens
     if (result.record.cost !== undefined) nr.cost = result.record.cost
+    if (result.record.permissionAsks) nr.permissionAsks = result.record.permissionAsks
 
     if (result.record.status !== 'success') {
       throw new Error(result.record.error ?? `agent exited with code ${result.record.exitCode}`)

@@ -71,6 +71,8 @@ const api: ExposedAPI = {
   bindTaskProvider: (name, profileId) => ipcRenderer.invoke(IPC.TASK_BIND_PROVIDER, name, profileId),
   getTaskPermission: (name) => ipcRenderer.invoke(IPC.TASK_PERMISSION_GET, name),
   setTaskPermission: (name, profile) => ipcRenderer.invoke(IPC.TASK_PERMISSION_SET, name, profile),
+  getFlowPermission: (name) => ipcRenderer.invoke(IPC.FLOW_PERMISSION_GET, name),
+  setFlowPermission: (name, profile) => ipcRenderer.invoke(IPC.FLOW_PERMISSION_SET, name, profile),
   fetchProviderModels: (baseUrl, apiKey) => ipcRenderer.invoke(IPC.PROVIDERS_FETCH_MODELS, { baseUrl, apiKey }),
   getModelList: () => ipcRenderer.invoke(IPC.MODELS_LIST),
 

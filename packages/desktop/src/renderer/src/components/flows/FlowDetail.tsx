@@ -7,6 +7,7 @@ import { useModelOptions } from '../../hooks/useModels'
 import type { FlowInfo } from '../../../../shared/ipc-types'
 import { useI18n } from '../../hooks/useI18n'
 import FlowCanvas from './FlowCanvas'
+import PermissionCard from '../tasks/PermissionCard'
 
 interface FlowDetailProps {
   name: string
@@ -341,6 +342,12 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
               {nr.cost ? <>${nr.cost.toFixed(4)}</> : null}
             </span>
           )}
+          {(nr.permissionAsks?.length ?? 0) > 0 && (
+            <span className="text-[var(--color-text-dim)]">
+              {t('flows.permAsks', { count: nr.permissionAsks!.length })}{' '}
+              {nr.permissionAsks!.map((ask) => `${ask.permission} → ${t(`detail.permResp.${ask.response}`)}`).join(', ')}
+            </span>
+          )}
         </div>
         {nr.skipReason && (
           <div className="text-xs text-[var(--color-text-dim)]">
@@ -503,6 +510,9 @@ export default function FlowDetail({ name, onBack }: FlowDetailProps) {
             onSelectNode={setSelectedNode}
             onNodePosition={(nodeName, position) => updateNode(nodeName, { position })}
           />
+
+          {/* Flow permission card - governs inline AI nodes + AI takeover */}
+          <PermissionCard kind="flow" name={config.name} />
 
           {/* Run history */}
           <div>

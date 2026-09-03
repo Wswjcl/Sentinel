@@ -10,10 +10,17 @@ const labelCls = 'block text-xs font-medium text-[var(--color-text-muted)] mb-1'
 
 const PRESETS: PermissionPreset[] = ['readonly', 'standard', 'trusted', 'custom']
 
+export interface PermissionCardProps {
+  kind: 'task' | 'flow'
+  name: string
+}
+
 /** Permission card: pick a preset (or a custom combination of writable
- *  globs and tool policies). Changes compile straight into the task
- *  workspace's .opencode config, which opencode enforces natively. */
-export default function PermissionCard({ taskName }: { taskName: string }) {
+ *  globs and tool policies). Changes compile straight into the workspace's
+ *  .opencode config (task dir or flow dir), which opencode enforces
+ *  natively. For flows this governs inline AI nodes and AI takeover;
+ *  referenced-task nodes keep using the referenced task's own card. */
+export default function PermissionCard({ kind, name }: PermissionCardProps) {
   const { t } = useI18n()
   const [profile, setProfile] = useState<PermissionProfile | null>(null)
   const [applied, setApplied] = useState(false)
@@ -22,20 +29,21 @@ export default function PermissionCard({ taskName }: { taskName: string }) {
   const [globDraft, setGlobDraft] = useState('')
 
   useEffect(() => {
-    window.api
-      .getTaskPermission(taskName)
+    const api = kind === 'flow' ? window.api.getFlowPermission : window.api.getTaskPermission
+    api(name)
       .then((r) => {
         setProfile(r.profile)
         setApplied(r.applied)
       })
       .catch(() => setProfile(null))
       .finally(() => setLoaded(true))
-  }, [taskName])
+  }, [kind, name])
 
   const save = async (next: PermissionProfile | null): Promise<void> => {
     setSaving(true)
     try {
-      await window.api.setTaskPermission(taskName, next)
+      const api = kind === 'flow' ? window.api.setFlowPermission : window.api.setTaskPermission
+      await api(name, next)
       setProfile(next)
       setApplied(next !== null)
     } finally {

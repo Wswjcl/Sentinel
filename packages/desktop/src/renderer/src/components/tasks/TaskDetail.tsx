@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { TaskInfo, TaskStatus, TaskRunRecord } from '@sentinel/core'
-import { ArrowLeft, Play, Pause, Trash2, RefreshCw, FolderOpen, FileText, Clock, Radio, Square, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, Play, Pause, Trash2, RefreshCw, FolderOpen, FileText, Clock, Radio, Square } from 'lucide-react'
 import { useI18n } from '../../hooks/useI18n'
 import { useModelOptions } from '../../hooks/useModels'
 import { describeScheduleText } from '../../lib/schedule'
@@ -355,7 +355,7 @@ function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => voi
       </div>
 
       {/* Permission card (editable) */}
-      <PermissionCard taskName={config.name} />
+      <PermissionCard kind="task" name={config.name} />
 
       {/* Model override (editable) */}
       <div>
@@ -519,13 +519,11 @@ interface LiveLine {
 function LiveTab({ task }: { task: TaskInfo }) {
   const { t } = useI18n()
   const [lines, setLines] = useState<LiveLine[]>([])
-  const [permissions, setPermissions] = useState<PermissionAskData[]>([])
   const streamRef = useRef<HTMLDivElement>(null)
   const name = task.config.name
 
   useEffect(() => {
     setLines([])
-    setPermissions([])
     let seq = 0
     const push = (kind: LiveLine['kind'], text: string) => {
       setLines((prev) => [...prev, { id: seq++, kind, text }].slice(-500))
@@ -540,8 +538,9 @@ function LiveTab({ task }: { task: TaskInfo }) {
     })
     const unsubPerm = window.api.onTaskPermission(({ name: n, request }) => {
       if (n !== name) return
-      // Queue: a run may hit several permission asks in a row.
-      setPermissions((prev) => [...prev, request])
+      // Permission asks surface in the global overlay (MainLayout); here we
+      // only mark the stream so the ask is visible in context.
+      push('status', `${t('detail.permissionAsk', { tool: request.permission })}`)
     })
     return () => {
       unsubLive()
@@ -554,11 +553,6 @@ function LiveTab({ task }: { task: TaskInfo }) {
     const el = streamRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [lines])
-
-  const respond = async (permissionId: string, response: 'once' | 'always' | 'reject') => {
-    setPermissions((prev) => prev.filter((p) => p.id !== permissionId))
-    await window.api.respondTaskPermission(permissionId, response)
-  }
 
   return (
     <div>
@@ -577,40 +571,6 @@ function LiveTab({ task }: { task: TaskInfo }) {
           </button>
         )}
       </div>
-
-      {/* Permission approval cards (queued asks, newest last) */}
-      {permissions.map((permission) => (
-        <div
-          key={permission.id}
-          className="mb-3 rounded-lg border border-[var(--color-yellow)] bg-[var(--color-card)] p-3"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <ShieldAlert className="w-4 h-4 text-[var(--color-yellow)]" />
-            <span className="text-sm font-medium text-[var(--color-text)]">
-              {t('detail.permissionAsk', { tool: permission.permission })}
-            </span>
-          </div>
-          {permission.patterns.length > 0 && (
-            <pre className="text-xs text-[var(--color-text)] bg-[var(--color-hover)] rounded p-2 mb-2 whitespace-pre-wrap font-mono">
-              {permission.patterns.join('\n')}
-            </pre>
-          )}
-          <div className="flex gap-2">
-            <button onClick={() => respond(permission.id, 'once')}
-              className="px-3 py-1 rounded text-xs font-medium bg-[var(--color-green)] text-white hover:opacity-90">
-              {t('detail.permissionOnce')}
-            </button>
-            <button onClick={() => respond(permission.id, 'always')}
-              className="px-3 py-1 rounded text-xs font-medium bg-[var(--color-blue)] text-white hover:opacity-90">
-              {t('detail.permissionAlways')}
-            </button>
-            <button onClick={() => respond(permission.id, 'reject')}
-              className="px-3 py-1 rounded text-xs font-medium bg-[var(--color-red)] text-white hover:opacity-90">
-              {t('detail.permissionReject')}
-            </button>
-          </div>
-        </div>
-      ))}
 
       {/* Live stream */}
       <div
@@ -723,6 +683,27 @@ function HistoryTab({ history }: { history: TaskRunRecord[] }) {
                       {call.tool}
                       {call.title && <span className="truncate max-w-[300px]">{call.title}</span>}
                       {call.status !== 'completed' && <span>({call.status})</span>}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {record.permissionAsks && record.permissionAsks.length > 0 && (
+              <details className="mt-1">
+                <summary className="text-xs text-[var(--color-text-muted)] cursor-pointer select-none">
+                  {t('detail.permAsks', { count: record.permissionAsks.length })}
+                </summary>
+                <ul className="mt-1 space-y-0.5">
+                  {record.permissionAsks.map((ask, i) => (
+                    <li key={i} className="text-xs text-[var(--color-text-dim)] font-mono flex items-center gap-1.5">
+                      <span className={
+                        ask.response === 'timeout' || ask.response === 'reject'
+                          ? 'text-[var(--color-red)]'
+                          : 'text-[var(--color-green)]'
+                      }>●</span>
+                      {ask.permission}
+                      {ask.patterns.length > 0 && <span className="truncate max-w-[300px]">{ask.patterns[0]}</span>}
+                      <span>→ {t(`detail.permResp.${ask.response}`)}</span>
                     </li>
                   ))}
                 </ul>

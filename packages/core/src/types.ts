@@ -92,6 +92,15 @@ export interface TaskConfig {
 
 /** Sentinel-managed permission card, compiled into the workspace
  *  .opencode config's permission section. */
+/** One permission ask and its outcome ('timeout' = auto-denied after
+ *  the 2-minute wait with no user answer). */
+export interface PermissionAskRecord {
+  permission: string
+  patterns: string[]
+  response: 'once' | 'always' | 'reject' | 'timeout'
+  at: string
+}
+
 export type PermissionLevel = 'allow' | 'ask' | 'deny'
 export type PermissionPreset = 'readonly' | 'standard' | 'trusted' | 'custom'
 export interface PermissionProfile {
@@ -147,6 +156,8 @@ export interface TaskRunRecord {
   tokens?: TokenUsage
   /** Cost in USD summed across all agent steps */
   cost?: number
+  /** Permission asks raised during this run and how each was answered */
+  permissionAsks?: PermissionAskRecord[]
   /** Number of agent steps (LLM round-trips) */
   steps?: number
   /** Structured tool-call audit, in execution order (bounded) */
@@ -259,6 +270,9 @@ export interface FlowConfig {
   name: string
   description?: string
   version: number
+  /** Permission card (v3.6.0): compiled into the flow dir's .opencode
+   *  config; governs inline AI nodes and manual-node AI takeover. */
+  permissions?: PermissionProfile
   /** Whole-flow schedule. When set, the scheduler triggers the flow. */
   schedule?: TaskSchedule
   /** Max nodes running in parallel (default: engine concurrency). */
@@ -300,6 +314,8 @@ export interface FlowNodeRun {
   tokens?: TokenUsage
   /** Cost in USD of the AI step, copied from the task run record. */
   cost?: number
+  /** Permission asks raised during the AI step, copied from the record. */
+  permissionAsks?: PermissionAskRecord[]
 }
 
 export interface FlowRun {

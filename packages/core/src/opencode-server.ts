@@ -60,6 +60,9 @@ export interface ServeRunOptions {
   /** Permission policy. Return a response or a promise of one. Requests
    *  that outlive `permissionTimeoutMs` are denied. Default: deny all. */
   onPermission?: (request: PermissionRequest) => Promise<PermissionResponse> | PermissionResponse
+  /** Audit hook: fires once per ask with the final outcome - 'timeout'
+   *  means the 2-minute wait elapsed and the ask was auto-denied. */
+  onPermissionResult?: (request: PermissionRequest, response: PermissionResponse | 'timeout') => void
   permissionTimeoutMs?: number
   /** Live event stream (text deltas, tool calls, permission asks). */
   onEvent?: (event: ServeLiveEvent) => void
@@ -83,6 +86,8 @@ export interface OpenCodeServerOptions {
   /** Fixed port; default picks a free ephemeral port. */
   port?: number
   onLog?: (level: 'info' | 'warn' | 'error', msg: string) => void
+  /** Audit hook: fires once per permission ask with the final outcome. */
+  onPermissionResult?: (request: PermissionRequest, response: PermissionResponse | 'timeout') => void
 }
 
 export class OpenCodeServer {
@@ -92,6 +97,7 @@ export class OpenCodeServer {
   /** SSE streams are directory-scoped: /event only pushes events for
    *  sessions in the given directory, so we keep one stream per task dir. */
   private eventStreams = new Map<string, { abort: AbortController; started: Promise<void> }>()
+  private onPermissionResult?: (request: PermissionRequest, response: PermissionResponse | 'timeout') => void
   private permissionHandlers = new Map<
     string,
     (request: PermissionRequest) => Promise<PermissionResponse> | PermissionResponse
@@ -103,6 +109,7 @@ export class OpenCodeServer {
   private constructor(options: OpenCodeServerOptions) {
     this.opencodeBin = options.opencodeBin ?? 'opencode'
     this.onLog = options.onLog
+    this.onPermissionResult = options.onPermissionResult
   }
 
   /** Start a serve process and wait until it answers HTTP requests. */
@@ -314,15 +321,18 @@ export class OpenCodeServer {
   ): Promise<void> {
     try {
       const timeoutMs = 120_000
-      const response = await Promise.race([
+      const outcome = await Promise.race([
         Promise.resolve(handler(request)),
-        new Promise<PermissionResponse>((resolve) =>
-          setTimeout(() => resolve('reject'), timeoutMs),
-        ),
+        new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), timeoutMs)),
       ])
+      // Timeout and a thrown handler both deny - report 'timeout' only for
+      // the former so the audit trail can tell the two apart.
+      const response: PermissionResponse = outcome === 'timeout' ? 'reject' : outcome
       await this.postPermission(request.sessionId, request.id, response)
+      this.onPermissionResult?.(request, outcome)
     } catch {
       await this.postPermission(request.sessionId, request.id, 'reject').catch(() => {})
+      this.onPermissionResult?.(request, 'reject')
     }
   }
 

@@ -6,7 +6,7 @@ import { join, resolve, dirname, basename, parse } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents, applyProviderBinding, resolveWindowsBinary, applyPermissionProfile, hasPermissionProfile } from '@sentinel/core'
-import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult, ManualGateDecision, PermissionProfile } from '@sentinel/core'
+import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult, ManualGateDecision, PermissionProfile, PermissionAskRecord } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
 import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, PermissionAskData, LiveEventData, SkillEntry, SkillWorkspaceKind, SkillWorkspaceRef, ProviderProfile } from '../shared/ipc-types'
 
@@ -181,8 +181,11 @@ function makeServeExecutor(
       taskAbortControllers.set(name, controllers)
     }
     controllers.add(abortController)
+    // Per-run permission audit: filled by the result hook below, stamped
+    // onto the returned record once the run settles.
+    const asks: PermissionAskRecord[] = []
     try {
-      return await server.runTask({
+      const result = await server.runTask({
         taskDir: options.taskDir,
         config: options.config,
         promptOverride: options.promptOverride,
@@ -210,7 +213,22 @@ function makeServeExecutor(
             // Core denies after its own timeout; this cleanup just drops the waiter.
             setTimeout(() => permissionWaiters.delete(request.id), 130_000)
           }),
+        onPermissionResult: (request, response) => {
+          asks.push({
+            permission: request.permission,
+            patterns: request.patterns,
+            response,
+            at: new Date().toISOString(),
+          })
+          // Visible even when no Live tab / dialog is open
+          sentinelEvents.emit('scheduler:log', {
+            level: 'warn',
+            msg: `[perm] ${name}: ${request.permission}${request.patterns.length ? ` (${request.patterns[0]})` : ''} → ${response === 'timeout' ? 'timeout-deny' : response}`,
+          })
+        },
       })
+      if (asks.length > 0) result.record.permissionAsks = asks
+      return result
     } finally {
       controllers.delete(abortController)
       if (controllers.size === 0) taskAbortControllers.delete(name)
@@ -1177,6 +1195,28 @@ function registerIpcHandlers(): void {
     if (profile) config.permissions = profile
     else delete config.permissions
     await store.saveConfig(name, config)
+    return { ok: true }
+  })
+
+  // Flow permission card: same compile-to-.opencode mechanism, but the
+  // workspace is the flow's own directory (inline AI nodes + AI takeover
+  // run there). Referenced-task nodes use the task's card instead.
+  ipcMain.handle(IPC.FLOW_PERMISSION_GET, async (_e, name: string) => {
+    const dir = flowStore.getFlowDir(name)
+    const config = await flowStore.getConfig(name)
+    return { profile: config.permissions ?? null, applied: await hasPermissionProfile(dir) }
+  })
+
+  ipcMain.handle(IPC.FLOW_PERMISSION_SET, async (_e, name: string, profile: PermissionProfile | null) => {
+    if (profile && !['readonly', 'standard', 'trusted', 'custom'].includes(profile.preset)) {
+      throw new Error(`Unknown permission preset: ${profile.preset}`)
+    }
+    const dir = flowStore.getFlowDir(name)
+    await applyPermissionProfile(dir, profile)
+    const config = await flowStore.getConfig(name)
+    if (profile) config.permissions = profile
+    else delete config.permissions
+    await flowStore.saveConfig(name, config)
     return { ok: true }
   })
 

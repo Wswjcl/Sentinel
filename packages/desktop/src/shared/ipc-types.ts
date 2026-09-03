@@ -73,6 +73,8 @@ export const IPC = {
   TASK_BIND_PROVIDER: 'tasks:bind-provider',
   TASK_PERMISSION_GET: 'tasks:permission-get',
   TASK_PERMISSION_SET: 'tasks:permission-set',
+  FLOW_PERMISSION_GET: 'flows:permission-get',
+  FLOW_PERMISSION_SET: 'flows:permission-set',
   PROVIDERS_FETCH_MODELS: 'providers:fetch-models',
 
   // Model discovery (local `opencode models` output)
@@ -334,6 +336,8 @@ export interface ExposedAPI {
   bindTaskProvider(name: string, profileId: string | null): Promise<{ ok: boolean }>
   getTaskPermission(name: string): Promise<{ profile: PermissionProfile | null; applied: boolean }>
   setTaskPermission(name: string, profile: PermissionProfile | null): Promise<{ ok: boolean }>
+  getFlowPermission(name: string): Promise<{ profile: PermissionProfile | null; applied: boolean }>
+  setFlowPermission(name: string, profile: PermissionProfile | null): Promise<{ ok: boolean }>
   /** Discover model ids on an OpenAI-compatible endpoint (GET /models). */
   fetchProviderModels(baseUrl: string, apiKey?: string): Promise<{ ok: boolean; models: string[] }>
   /** Models the local opencode actually supports (`opencode models`,

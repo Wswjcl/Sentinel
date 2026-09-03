@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import Sidebar from './Sidebar'
 import TitleBar from './TitleBar'
+import PermissionOverlay from './PermissionOverlay'
 
 interface MainLayoutProps {
   currentView: string
@@ -23,6 +24,9 @@ export default function MainLayout({ currentView, onViewChange, children }: Main
           {children}
         </main>
       </div>
+
+      {/* Global permission approval surface - covers tasks and flows alike */}
+      <PermissionOverlay />
     </div>
   )
 }
