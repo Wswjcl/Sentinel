@@ -4,6 +4,7 @@
  * on temp dirs, including previous-config preservation semantics.
  */
 import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -30,13 +31,13 @@ function eq(a, b) {
 
 // ── Compile logic ────────────────────────────────────────────────
 const ro = compilePermissionConfig({ preset: 'readonly' })
-check('readonly compiles', eq(ro, { edit: 'deny', bash: 'ask', webfetch: 'ask', external_directory: 'ask' }), JSON.stringify(ro))
+check('readonly compiles', eq(ro, { edit: 'deny', bash: 'ask', webfetch: 'ask', external_directory: { '*': 'ask' } }), JSON.stringify(ro))
 
 const std = compilePermissionConfig({ preset: 'standard' })
-check('standard compiles', eq(std, { edit: 'allow', bash: 'ask', webfetch: 'ask', external_directory: 'ask' }), JSON.stringify(std))
+check('standard compiles', eq(std, { edit: 'allow', bash: 'ask', webfetch: 'ask', external_directory: { '*': 'ask' } }), JSON.stringify(std))
 
 const tr = compilePermissionConfig({ preset: 'trusted' })
-check('trusted compiles to explicit allows', eq(tr, { edit: 'allow', bash: 'allow', webfetch: 'allow', external_directory: 'allow' }), JSON.stringify(tr))
+check('trusted compiles to explicit allows', eq(tr, { edit: 'allow', bash: 'allow', webfetch: 'allow', external_directory: { '*': 'allow' } }), JSON.stringify(tr))
 
 const cu = compilePermissionConfig({
   preset: 'custom',
@@ -48,10 +49,11 @@ const cu = compilePermissionConfig({
 })
 check('custom edit: catch-all first, globs after (last-match-wins)', eq(cu.edit, { '*': 'ask', 'src/**': 'allow', 'docs/*.md': 'allow' }), JSON.stringify(cu.edit))
 check('custom bash: catch-all first, denies after', eq(cu.bash, { '*': 'allow', 'rm *': 'deny', 'git push*': 'deny' }), JSON.stringify(cu.bash))
-check('custom external_directory deny', cu.external_directory === 'deny')
+check('custom external_directory deny (object form)', eq(cu.external_directory, { '*': 'deny' }))
+check('external_directory uses object form everywhere (1.18.x)', typeof ro.external_directory === 'object' && typeof tr.external_directory === 'object')
 
 const cuMinimal = compilePermissionConfig({ preset: 'custom' })
-check('custom falls back to ask defaults', cuMinimal.bash['*'] === 'ask' && cuMinimal.external_directory === 'ask' && cuMinimal.edit['*'] === 'ask')
+check('custom falls back to ask defaults', cuMinimal.bash['*'] === 'ask' && cuMinimal.external_directory['*'] === 'ask' && cuMinimal.edit['*'] === 'ask')
 
 // ── Apply / clear round-trip ─────────────────────────────────────
 const base = await mkdtemp(join(tmpdir(), 'sentinel-perm-'))
@@ -99,6 +101,30 @@ try {
   await applyPermissionProfile(taskDir, null)
   config = JSON.parse(await readFile(configPath, 'utf-8'))
   check('clear removes generated permission key when there was none before', !('permission' in config) && config.model === 'x/y', JSON.stringify(config))
+
+  // ── Git-root guard: nested workspaces must become their own root ──
+  const { execSync } = await import('node:child_process')
+  const parent = join(base, 'outer-repo')
+  const nested = join(parent, 'flow-a')
+  await mkdir(nested, { recursive: true })
+  execSync('git init', { cwd: parent, stdio: 'ignore' })
+  await applyPermissionProfile(nested, { preset: 'trusted' })
+  check('nested workspace got its own .git', existsSync(join(nested, '.git')))
+  let toplevel = execSync('git rev-parse --show-toplevel', { cwd: nested, encoding: 'utf-8' }).trim()
+  check('git root is the workspace itself', toplevel.toLowerCase().split('\\').join('/').endsWith('flow-a'), toplevel)
+
+  // Standalone dir outside any repo: no .git invented
+  const standalone = join(base, 'standalone')
+  await mkdir(standalone, { recursive: true })
+  await applyPermissionProfile(standalone, { preset: 'standard' })
+  check('standalone dir stays non-repo', !existsSync(join(standalone, '.git')))
+  // Own repo already: untouched
+  const ownRepo = join(base, 'own-repo')
+  await mkdir(ownRepo, { recursive: true })
+  execSync('git init', { cwd: ownRepo, stdio: 'ignore' })
+  await applyPermissionProfile(ownRepo, { preset: 'trusted' })
+  toplevel = execSync('git rev-parse --show-toplevel', { cwd: ownRepo, encoding: 'utf-8' }).trim()
+  check('existing repo root untouched', toplevel.toLowerCase().split('\\').join('/').endsWith('own-repo'), toplevel)
 } finally {
   await rm(base, { recursive: true, force: true })
 }

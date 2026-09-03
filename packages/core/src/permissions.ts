@@ -1,5 +1,7 @@
+import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { PermissionLevel, PermissionProfile } from './types.js'
 
 /**
@@ -33,13 +35,13 @@ export function compilePermissionConfig(profile: PermissionProfile): Record<stri
   switch (profile.preset) {
     case 'readonly':
       // Look and report, change nothing without approval
-      return { edit: 'deny', bash: 'ask', webfetch: 'ask', external_directory: profile.external ?? 'ask' }
+      return { edit: 'deny', bash: 'ask', webfetch: 'ask', external_directory: { '*': profile.external ?? 'ask' } }
     case 'trusted':
       // Explicit allows so workspace overrides any stricter global config
-      return { edit: 'allow', bash: 'allow', webfetch: 'allow', external_directory: 'allow' }
+      return { edit: 'allow', bash: 'allow', webfetch: 'allow', external_directory: { '*': 'allow' } }
     case 'standard': {
       // Whole workspace writable, everything else asks first
-      return { edit: 'allow', bash: 'ask', webfetch: 'ask', external_directory: profile.external ?? 'ask' }
+      return { edit: 'allow', bash: 'ask', webfetch: 'ask', external_directory: { '*': profile.external ?? 'ask' } }
     }
     case 'custom': {
       const edit: Record<string, unknown> = { '*': 'ask' }
@@ -50,7 +52,7 @@ export function compilePermissionConfig(profile: PermissionProfile): Record<stri
         edit,
         bash,
         webfetch: profile.webfetch ?? 'ask',
-        external_directory: profile.external ?? 'ask',
+        external_directory: { '*': profile.external ?? 'ask' },
       }
     }
   }
@@ -70,6 +72,31 @@ async function readJson<T>(path: string): Promise<T | null> {
   }
 }
 
+/**
+ * opencode roots a project at the enclosing git worktree and reads its
+ * config from there - a workspace nested inside a foreign repo (e.g. a
+ * Sentinel flow dir under the app repo, or a task dir under some parent
+ * project) would never see its own .opencode config, silently dropping
+ * the permission card. Make the workspace its own git root so the config
+ * applies. No-op when the dir already has .git or is not inside any repo.
+ */
+function ensureOwnGitRoot(taskDir: string): void {
+  try {
+    if (existsSync(join(taskDir, '.git'))) return
+    const probe = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: taskDir, timeout: 5000, encoding: 'utf-8',
+    })
+    const top = (probe.stdout ?? '').toString().trim()
+    if (!top) return // not inside any repo - config is read as-is
+    const same = (a: string, b: string): boolean =>
+      resolve(a).toLowerCase() === resolve(b).toLowerCase()
+    if (same(top, taskDir)) return
+    spawnSync('git', ['init'], { cwd: taskDir, timeout: 10_000 })
+  } catch {
+    // git unavailable or failed - config is still written, best effort
+  }
+}
+
 /** Apply a profile to the workspace .opencode config (null = clear and
  *  restore whatever permission config the user had before). */
 export async function applyPermissionProfile(
@@ -85,6 +112,7 @@ export async function applyPermissionProfile(
   const sidecar = await readJson<PermissionSidecar>(sidecarPath)
 
   if (profile) {
+    ensureOwnGitRoot(taskDir)
     // Preserve a non-Sentinel permission config exactly once, on first apply
     const previous = sidecar?.previous !== undefined ? sidecar.previous : config.permission
     config.permission = compilePermissionConfig(profile)
