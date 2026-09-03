@@ -84,6 +84,28 @@ export interface TaskConfig {
   notify?: TaskNotify
   /** Loop Engineering: enable Agent Loop for this task */
   agentLoop?: AgentLoopConfig
+  /** Permission card (v3.6.0): compiled into the workspace .opencode
+   *  config by applyPermissionProfile. Absent = no Sentinel-managed
+   *  permission rules (opencode defaults / user's own config). */
+  permissions?: PermissionProfile
+}
+
+/** Sentinel-managed permission card, compiled into the workspace
+ *  .opencode config's permission section. */
+export type PermissionLevel = 'allow' | 'ask' | 'deny'
+export type PermissionPreset = 'readonly' | 'standard' | 'trusted' | 'custom'
+export interface PermissionProfile {
+  preset: PermissionPreset
+  /** Writable path globs relative to the project dir (custom preset only,
+   *  e.g. "src/**", "docs/*.md"). Empty list = nothing writable without ask. */
+  editGlobs?: string[]
+  /** Bash policy (custom preset only; readonly forces ask, trusted allows). */
+  bash?: PermissionLevel
+  /** Bash command patterns that are always denied (custom preset only). */
+  bashDeny?: string[]
+  /** Access to paths outside the workspace - gates reads too. */
+  external?: PermissionLevel
+  webfetch?: PermissionLevel
 }
 
 export type TaskStatus =

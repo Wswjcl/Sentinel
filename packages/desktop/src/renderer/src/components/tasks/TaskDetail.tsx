@@ -4,6 +4,7 @@ import { ArrowLeft, Play, Pause, Trash2, RefreshCw, FolderOpen, FileText, Clock,
 import { useI18n } from '../../hooks/useI18n'
 import { useModelOptions } from '../../hooks/useModels'
 import { describeScheduleText } from '../../lib/schedule'
+import PermissionCard from './PermissionCard'
 import type { TreeNode, OutputFile, PermissionAskData, LiveEventData, ProviderProfile } from '../../../../shared/ipc-types'
 
 interface TaskDetailProps {
@@ -352,6 +353,9 @@ function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => voi
         </div>
         <p className="text-xs text-[var(--color-text-dim)] mt-1">{t('detail.providerBindingHint')}</p>
       </div>
+
+      {/* Permission card (editable) */}
+      <PermissionCard taskName={config.name} />
 
       {/* Model override (editable) */}
       <div>

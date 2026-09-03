@@ -5,8 +5,8 @@ import { promises as fs, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, resolve, dirname, basename, parse } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents, applyProviderBinding, resolveWindowsBinary } from '@sentinel/core'
-import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult, ManualGateDecision } from '@sentinel/core'
+import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents, applyProviderBinding, resolveWindowsBinary, applyPermissionProfile, hasPermissionProfile } from '@sentinel/core'
+import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult, ManualGateDecision, PermissionProfile } from '@sentinel/core'
 import { IPC } from '../shared/ipc-types'
 import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, PermissionAskData, LiveEventData, SkillEntry, SkillWorkspaceKind, SkillWorkspaceRef, ProviderProfile } from '../shared/ipc-types'
 
@@ -475,6 +475,16 @@ function registerIpcHandlers(): void {
       skills: opts.skills,
     })
     await store.saveOpenCodeConfig(opts.name, ocConfig)
+
+    // Permission preset: overrides the generated permission section (the
+    // generated one is preserved in the sidecar and restored when the card
+    // is cleared). Must run after saveOpenCodeConfig or it would be
+    // overwritten by the generated config.
+    if (opts.permissions) {
+      finalConfig.permissions = opts.permissions
+      await applyPermissionProfile(taskDir, opts.permissions)
+      await store.saveConfig(opts.name, finalConfig)
+    }
 
     // Write AGENTS.md
     await fs.writeFile(
@@ -1143,6 +1153,29 @@ function registerIpcHandlers(): void {
       await applyProviderBinding(dir, null)
       delete config.execution.providerProfile
     }
+    await store.saveConfig(name, config)
+    return { ok: true }
+  })
+
+  // Permission card: read a task's profile and whether it is currently
+  // compiled into the workspace .opencode config.
+  ipcMain.handle(IPC.TASK_PERMISSION_GET, async (_e, name: string) => {
+    const dir = store.getTaskDir(name)
+    const config = await store.getConfig(name)
+    return { profile: config.permissions ?? null, applied: await hasPermissionProfile(dir) }
+  })
+
+  // Permission card: apply (or clear) the profile - compiles into the
+  // workspace .opencode config and records it in task.yaml.
+  ipcMain.handle(IPC.TASK_PERMISSION_SET, async (_e, name: string, profile: PermissionProfile | null) => {
+    if (profile && !['readonly', 'standard', 'trusted', 'custom'].includes(profile.preset)) {
+      throw new Error(`Unknown permission preset: ${profile.preset}`)
+    }
+    const dir = store.getTaskDir(name)
+    await applyPermissionProfile(dir, profile)
+    const config = await store.getConfig(name)
+    if (profile) config.permissions = profile
+    else delete config.permissions
     await store.saveConfig(name, config)
     return { ok: true }
   })

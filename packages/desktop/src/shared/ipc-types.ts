@@ -1,6 +1,6 @@
 import type {
   TaskConfig, TaskInfo, TaskRunRecord, TaskStatus, AgentLoopConfig,
-  FlowConfig, FlowRun, FlowNodeStatus, ManualGateDecision,
+  FlowConfig, FlowRun, FlowNodeStatus, ManualGateDecision, PermissionProfile,
 } from '@sentinel/core'
 
 // ─── IPC Channel Names (single source of truth) ────────────────────
@@ -71,6 +71,8 @@ export const IPC = {
   PROVIDERS_SAVE: 'providers:save',
   PROVIDERS_DELETE: 'providers:delete',
   TASK_BIND_PROVIDER: 'tasks:bind-provider',
+  TASK_PERMISSION_GET: 'tasks:permission-get',
+  TASK_PERMISSION_SET: 'tasks:permission-set',
   PROVIDERS_FETCH_MODELS: 'providers:fetch-models',
 
   // Model discovery (local `opencode models` output)
@@ -125,6 +127,8 @@ export interface CreateTaskOpts {
     exec?: boolean
   }>
   allowTools?: string[]
+  /** Permission preset applied to the workspace .opencode config at creation. */
+  permissions?: PermissionProfile
   denyTools?: string[]
   /** Loop Engineering: agent loop config for this task */
   agentLoop?: AgentLoopConfig
@@ -328,6 +332,8 @@ export interface ExposedAPI {
   /** Bind/unbind a profile on a task (null unbinds). Compiles the
    *  profile into the task workspace's .opencode config. */
   bindTaskProvider(name: string, profileId: string | null): Promise<{ ok: boolean }>
+  getTaskPermission(name: string): Promise<{ profile: PermissionProfile | null; applied: boolean }>
+  setTaskPermission(name: string, profile: PermissionProfile | null): Promise<{ ok: boolean }>
   /** Discover model ids on an OpenAI-compatible endpoint (GET /models). */
   fetchProviderModels(baseUrl: string, apiKey?: string): Promise<{ ok: boolean; models: string[] }>
   /** Models the local opencode actually supports (`opencode models`,

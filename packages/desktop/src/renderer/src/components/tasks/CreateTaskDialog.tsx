@@ -27,6 +27,7 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
   const [sessionMode, setSessionMode] = useState<'fresh' | 'continue' | 'fork'>('fresh')
   const [projectDir, setProjectDir] = useState('')
   const [allowTools, setAllowTools] = useState<string[]>(AVAILABLE_TOOLS)
+  const [permPreset, setPermPreset] = useState<'' | 'readonly' | 'standard' | 'trusted'>('')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [loopEnabled, setLoopEnabled] = useState(false)
   const [verifyType, setVerifyType] = useState<'command' | 'llm'>('command')
@@ -88,6 +89,7 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
         },
         skills: skillList,
         allowTools: allowTools.length < AVAILABLE_TOOLS.length ? allowTools : undefined,
+        permissions: permPreset ? { preset: permPreset } : undefined,
         agentLoop: loopEnabled
           ? {
               enabled: true,
@@ -317,6 +319,23 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
                     {tool}
                   </button>
                 ))}
+              </div>
+              <div className="mt-3">
+                <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
+                  {t('create.permPreset')}
+                </label>
+                <select
+                  value={permPreset}
+                  onChange={(e) => setPermPreset(e.target.value as typeof permPreset)}
+                  className="w-full bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
+                             px-3 py-1.5 text-sm text-[var(--color-text)]
+                             focus:outline-none focus:border-[var(--color-blue)] transition-colors"
+                >
+                  <option value="">{t('create.permPresetOff')}</option>
+                  <option value="standard">{t('detail.permPreset.standard')}</option>
+                  <option value="readonly">{t('detail.permPreset.readonly')}</option>
+                  <option value="trusted">{t('detail.permPreset.trusted')}</option>
+                </select>
               </div>
             </div>
           )}
