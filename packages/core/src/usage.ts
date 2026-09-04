@@ -140,7 +140,12 @@ export function monthToDate(records: UsageRecordish[], now = new Date()): { cost
   let cost = 0
   let tokens = 0
   for (const rec of records) {
-    if (!rec.startedAt || !rec.startedAt.startsWith(prefix)) continue
+    // startedAt is a UTC ISO string, so the month can only be read through
+    // localDayKey (local wall clock) - a raw startsWith(prefix) would push
+    // the first hours of a local month into the previous one for any
+    // non-UTC timezone.
+    const day = localDayKey(rec.startedAt)
+    if (!day || day.slice(0, 7) !== prefix) continue
     cost += rec.cost ?? 0
     tokens += rec.tokens?.total ?? 0
   }

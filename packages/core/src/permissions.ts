@@ -72,6 +72,10 @@ async function readJson<T>(path: string): Promise<T | null> {
   }
 }
 
+/** Log levels shared with the scheduler log panel. */
+export type PermissionLogLevel = 'info' | 'warn'
+export type PermissionLogFn = (level: PermissionLogLevel, msg: string) => void
+
 /**
  * opencode roots a project at the enclosing git worktree and reads its
  * config from there - a workspace nested inside a foreign repo (e.g. a
@@ -79,29 +83,50 @@ async function readJson<T>(path: string): Promise<T | null> {
  * project) would never see its own .opencode config, silently dropping
  * the permission card. Make the workspace its own git root so the config
  * applies. No-op when the dir already has .git or is not inside any repo.
+ *
+ * Every state change (init performed, git unavailable, probe failure) is
+ * reported through onLog - a silent failure here is exactly the
+ * "card written but never enforced" bug this function exists to fix.
  */
-function ensureOwnGitRoot(taskDir: string): void {
+function ensureOwnGitRoot(taskDir: string, onLog?: PermissionLogFn): void {
+  if (existsSync(join(taskDir, '.git'))) return
+  let top = ''
   try {
-    if (existsSync(join(taskDir, '.git'))) return
     const probe = spawnSync('git', ['rev-parse', '--show-toplevel'], {
       cwd: taskDir, timeout: 5000, encoding: 'utf-8',
     })
-    const top = (probe.stdout ?? '').toString().trim()
-    if (!top) return // not inside any repo - config is read as-is
-    const same = (a: string, b: string): boolean =>
-      resolve(a).toLowerCase() === resolve(b).toLowerCase()
-    if (same(top, taskDir)) return
-    spawnSync('git', ['init'], { cwd: taskDir, timeout: 10_000 })
+    if (probe.error || probe.status !== 0) {
+      onLog?.('warn', `[perm] git unavailable for ${taskDir} - if the directory sits inside another repo, its .opencode config (and permission card) may not be enforced`)
+      return
+    }
+    top = (probe.stdout ?? '').toString().trim()
   } catch {
-    // git unavailable or failed - config is still written, best effort
+    onLog?.('warn', `[perm] git probe failed for ${taskDir} - permission card may not be enforced in a nested repo`)
+    return
+  }
+  if (!top) return // not inside any repo - config is read as-is
+  const same = (a: string, b: string): boolean =>
+    resolve(a).toLowerCase() === resolve(b).toLowerCase()
+  if (same(top, taskDir)) return
+  try {
+    const init = spawnSync('git', ['init'], { cwd: taskDir, timeout: 10_000 })
+    if (init.error || init.status !== 0) {
+      onLog?.('warn', `[perm] git init failed for ${taskDir} - permission card may not be enforced (opencode reads config from the worktree root)`)
+    } else {
+      onLog?.('info', `[perm] initialized own git root in ${taskDir} so opencode applies this workspace's .opencode config`)
+    }
+  } catch {
+    onLog?.('warn', `[perm] git init failed for ${taskDir} - permission card may not be enforced`)
   }
 }
 
 /** Apply a profile to the workspace .opencode config (null = clear and
- *  restore whatever permission config the user had before). */
+ *  restore whatever permission config the user had before). onLog receives
+ *  the git-root side effects for the scheduler log. */
 export async function applyPermissionProfile(
   taskDir: string,
   profile: PermissionProfile | null,
+  onLog?: PermissionLogFn,
 ): Promise<void> {
   const ocDir = join(taskDir, '.opencode')
   await mkdir(ocDir, { recursive: true })
@@ -112,7 +137,7 @@ export async function applyPermissionProfile(
   const sidecar = await readJson<PermissionSidecar>(sidecarPath)
 
   if (profile) {
-    ensureOwnGitRoot(taskDir)
+    ensureOwnGitRoot(taskDir, onLog)
     // Preserve a non-Sentinel permission config exactly once, on first apply
     const previous = sidecar?.previous !== undefined ? sidecar.previous : config.permission
     config.permission = compilePermissionConfig(profile)

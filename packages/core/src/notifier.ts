@@ -2,6 +2,15 @@ import http from 'node:http'
 import https from 'node:https'
 import type { TaskConfig, TaskRunRecord } from './types.js'
 import type { VerificationResult } from './verification.js'
+import { localDayKey } from './usage.js'
+
+/** Last local day (YYYY-MM-DD) each task sent a budget-exceeded notice. */
+const budgetNotifiedDay = new Map<string, string>()
+
+/** Forget budget-notice dedupe state (tests; a fresh process starts clean). */
+export function resetBudgetNotifyState(): void {
+  budgetNotifiedDay.clear()
+}
 
 export interface NotifierOptions {
   /** Called when a webhook dispatch succeeds or fails (for logging) */
@@ -90,6 +99,11 @@ export class Notifier {
    * Webhook notice when a task's monthly budget cap blocks a run. Sent
    * whenever a webhook is configured - budget events are neither a run
    * success nor a failure, so the on_success/on_failure flags don't apply.
+   *
+   * Deduplicated to one notice per task per local day: while the cap holds,
+   * every trigger of the schedule re-enters the budget gate, and a cron
+   * firing every few minutes would otherwise spam the webhook until the
+   * month rolls over.
    */
   async notifyBudgetExceeded(
     config: TaskConfig,
@@ -97,6 +111,8 @@ export class Notifier {
   ): Promise<void> {
     const notify = config.notify
     if (!notify?.webhook_url) return
+    const today = localDayKey(new Date().toISOString())
+    if (budgetNotifiedDay.get(config.name) === today) return
     const reasons: string[] = []
     if (usage.monthlyCostUsd !== undefined) reasons.push(`$${usage.cost.toFixed(4)} >= $${usage.monthlyCostUsd}`)
     if (usage.monthlyTokens !== undefined) reasons.push(`${usage.tokens.toLocaleString()} tokens >= ${usage.monthlyTokens.toLocaleString()}`)
@@ -115,6 +131,9 @@ export class Notifier {
     }
     try {
       await this.sendWebhook(notify.webhook_url, payload)
+      // Mark only on success - a failed dispatch retries on the next
+      // trigger instead of being silenced for the rest of the day.
+      budgetNotifiedDay.set(config.name, today)
       this.log('info', `Budget-exceeded webhook sent for task ${config.name}`)
     } catch (err) {
       this.log('warn', `Budget-exceeded webhook failed for task ${config.name}: ${String(err)}`)

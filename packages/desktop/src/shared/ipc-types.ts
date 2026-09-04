@@ -96,6 +96,9 @@ export const IPC = {
   EVENT_FLOW_UPDATE: 'event:flow-update',
   EVENT_TASK_LIVE: 'event:task-live',
   EVENT_TASK_PERMISSION: 'event:task-permission',
+  /** Final outcome of a permission ask (incl. 'timeout' auto-deny) -
+   *  lets approval cards clear when they resolve without a user click. */
+  EVENT_TASK_PERMISSION_RESULT: 'event:task-permission-result',
 } as const
 
 // ─── Request / Response Types ──────────────────────────────────────
@@ -372,4 +375,7 @@ export interface ExposedAPI {
   onFlowUpdate(callback: (data: FlowEventData) => void): () => void
   onTaskLiveEvent(callback: (data: { name: string; event: LiveEventData }) => void): () => void
   onTaskPermission(callback: (data: { name: string; request: PermissionAskData }) => void): () => void
+  /** Fires when a permission ask settles - including 'timeout' when core
+   *  auto-denied it - so the overlay can remove the card. */
+  onTaskPermissionResult(callback: (data: { name: string; id: string; response: 'once' | 'always' | 'reject' | 'timeout' }) => void): () => void
 }

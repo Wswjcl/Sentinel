@@ -125,6 +125,12 @@ const api: ExposedAPI = {
     ipcRenderer.on(IPC.EVENT_TASK_PERMISSION, handler)
     return () => ipcRenderer.removeListener(IPC.EVENT_TASK_PERMISSION, handler)
   },
+
+  onTaskPermissionResult: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { name: string; id: string; response: 'once' | 'always' | 'reject' | 'timeout' }) => callback(data)
+    ipcRenderer.on(IPC.EVENT_TASK_PERMISSION_RESULT, handler)
+    return () => ipcRenderer.removeListener(IPC.EVENT_TASK_PERMISSION_RESULT, handler)
+  },
 }
 
 if (process.contextIsolated) {

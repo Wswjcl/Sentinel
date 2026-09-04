@@ -3,6 +3,7 @@
  * Usage aggregation smoke tests: day/model/source bucketing, range
  * filtering, month-to-date math used by the budget gate.
  */
+import http from 'node:http'
 import { pathToFileURL } from 'node:url'
 import { join } from 'node:path'
 
@@ -67,6 +68,43 @@ const monthRecs = [
 ]
 const m = monthToDate(monthRecs)
 check('month-to-date sums only current month', Math.abs(m.cost - 2) < 1e-9 && m.tokens === 3000, JSON.stringify(m))
+
+// ── local-month boundary (budget gate math) ──
+// A run in the first hours of the local 1st carries a UTC ISO string that
+// still belongs to the previous month (UTC+8: 00:00-08:00) - it must count
+// toward the current LOCAL month, matching localDayKey's attribution.
+const n0 = new Date()
+const firstOfMonth = new Date(n0.getFullYear(), n0.getMonth(), 1, 2, 0, 0)
+const mb = monthToDate([
+  { source: 't', sourceType: 'task', startedAt: firstOfMonth.toISOString(), tokens: { input: 1, output: 1, total: 500 }, cost: 0.25 },
+])
+check('month boundary uses local calendar', mb.tokens === 500 && Math.abs(mb.cost - 0.25) < 1e-9, JSON.stringify(mb))
+const ml = monthToDate([
+  { source: 't', sourceType: 'task', startedAt: new Date(n0.getFullYear(), n0.getMonth() - 1, 28, 23, 0, 0).toISOString(), tokens: { input: 1, output: 1, total: 777 }, cost: 7 },
+])
+check('previous local month excluded', ml.tokens === 0 && ml.cost === 0, JSON.stringify(ml))
+
+// ── budget webhook dedupe (one notice per task per local day) ──
+{
+  const { Notifier, resetBudgetNotifyState } = await import(pathToFileURL(join(coreDist, 'notifier.js')).href)
+  let hits = 0
+  const srv = http.createServer((_req, res) => {
+    hits++
+    res.writeHead(200)
+    res.end()
+  })
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r))
+  const cfg = { name: 'budget-smoke', notify: { webhook_url: `http://127.0.0.1:${srv.address().port}/hook` } }
+  const notif = new Notifier({ onLog: () => {} })
+  const usage = { cost: 2, tokens: 100, monthlyCostUsd: 1 }
+  await notif.notifyBudgetExceeded(cfg, usage)
+  await notif.notifyBudgetExceeded(cfg, usage)
+  check('budget webhook deduped per task per day', hits === 1, `hits=${hits}`)
+  resetBudgetNotifyState()
+  await notif.notifyBudgetExceeded(cfg, usage)
+  check('dedupe resets via resetBudgetNotifyState', hits === 2, `hits=${hits}`)
+  srv.close()
+}
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail > 0 ? 1 : 0)

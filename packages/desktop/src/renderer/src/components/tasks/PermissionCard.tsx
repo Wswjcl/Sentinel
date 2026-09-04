@@ -60,6 +60,20 @@ export default function PermissionCard({ kind, name }: PermissionCardProps) {
     setProfile({ ...profile, ...patch })
   }
 
+  // A literal '*' would overwrite the catch-all ('*': 'ask' -> 'allow') and
+  // silently make the whole workspace writable - block it, and dedupe.
+  const addGlob = (): void => {
+    const g = globDraft.trim()
+    if (!g || g === '*') return
+    const cur = profile?.editGlobs ?? []
+    if (cur.includes(g)) {
+      setGlobDraft('')
+      return
+    }
+    updateCustom({ editGlobs: [...cur, g] })
+    setGlobDraft('')
+  }
+
   return (
     <div>
       <h3 className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 uppercase tracking-wider">
@@ -137,22 +151,17 @@ export default function PermissionCard({ kind, name }: PermissionCardProps) {
                   value={globDraft}
                   onChange={(e) => setGlobDraft(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && globDraft.trim()) {
+                    if (e.key === 'Enter') {
                       e.preventDefault()
-                      updateCustom({ editGlobs: [...(profile.editGlobs ?? []), globDraft.trim()] })
-                      setGlobDraft('')
+                      addGlob()
                     }
                   }}
                   placeholder="src/**"
                   className={`${inputCls} flex-1 font-mono`}
                 />
                 <button
-                  onClick={() => {
-                    if (!globDraft.trim()) return
-                    updateCustom({ editGlobs: [...(profile.editGlobs ?? []), globDraft.trim()] })
-                    setGlobDraft('')
-                  }}
-                  className="px-2 rounded-lg bg-[var(--color-hover)] hover:bg-[var(--color-border)]
+                  onClick={addGlob}
+                  className="px-3 rounded-lg bg-[var(--color-hover)] hover:bg-[var(--color-border)]
                              text-[var(--color-text)] transition-colors"
                   title={t('detail.permAdd')}
                 >

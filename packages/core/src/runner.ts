@@ -49,7 +49,9 @@ export interface TaskRunOutcome {
   ok: boolean
   /** Final persisted status */
   finalStatus: TaskStatus
-  /** Last recorded run record (undefined only if even the error record failed to persist) */
+  /** Last recorded run record. Undefined when the run was skipped before
+   *  any execution (monthly budget cap reached) or when even the error
+   *  record failed to persist. */
   lastRecord?: TaskRunRecord
   /** Full agent-loop result when the task ran with agentLoop enabled */
   loopResult?: AgentLoopResult
@@ -84,7 +86,9 @@ export async function runTaskExecution(
   // Month-to-date usage is computed from this task's own history, so it
   // covers every run path (scheduled, manual, agent loop) with no extra
   // storage. Applies to ALL runs: a cap that manual clicks could silently
-  // bypass would not be a cap.
+  // bypass would not be a cap. Known limitation: the check runs once per
+  // run - a long agent loop that starts under the cap can overshoot it
+  // mid-run (iterations already paid for are still recorded).
   const budget = config.budget
   if (budget && (budget.monthlyCostUsd !== undefined || budget.monthlyTokens !== undefined)) {
     const history = info.history ?? (await taskStore.getHistory(name))

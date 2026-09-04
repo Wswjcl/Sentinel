@@ -349,7 +349,11 @@ export class OpenCodeServer {
         body: JSON.stringify({ response }),
         signal: AbortSignal.timeout(10_000),
       },
-    ).catch(() => {})
+    ).catch((err: unknown) => {
+      // The ask stays pending in opencode - the run hangs until abort -
+      // so this must be visible, not swallowed.
+      this.onLog?.('warn', `Failed to deliver permission response (${response}) for ${permissionId}: ${String(err)}`)
+    })
   }
 
   // ─── Task execution ─────────────────────────────────────

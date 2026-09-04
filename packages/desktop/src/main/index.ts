@@ -166,6 +166,12 @@ function notifyPermissionAsk(name: string, ask: PermissionAskData): void {
   }
 }
 
+/** Permission-card side effects (own-git-root init, git unavailable
+ *  warnings) surface in the scheduler log like every other runtime note. */
+const permLog = (level: 'info' | 'warn', msg: string): void => {
+  sentinelEvents.emit('scheduler:log', { level, msg })
+}
+
 /** Executor that routes one execution through the serve runtime. Task
  *  name for event routing comes from the execution config itself, so the
  *  same executor works for tasks AND flow AI nodes. */
@@ -219,6 +225,11 @@ function makeServeExecutor(
             patterns: request.patterns,
             response,
             at: new Date().toISOString(),
+          })
+          // Tell the renderer the ask settled (incl. timeout auto-deny)
+          // so the approval card doesn't linger after it's too late.
+          mainWindow?.webContents.send(IPC.EVENT_TASK_PERMISSION_RESULT, {
+            name, id: request.id, response,
           })
           // Visible even when no Live tab / dialog is open
           sentinelEvents.emit('scheduler:log', {
@@ -500,7 +511,7 @@ function registerIpcHandlers(): void {
     // overwritten by the generated config.
     if (opts.permissions) {
       finalConfig.permissions = opts.permissions
-      await applyPermissionProfile(taskDir, opts.permissions)
+      await applyPermissionProfile(taskDir, opts.permissions, permLog)
       await store.saveConfig(opts.name, finalConfig)
     }
 
@@ -1203,7 +1214,7 @@ function registerIpcHandlers(): void {
       throw new Error(`Unknown permission preset: ${profile.preset}`)
     }
     const dir = store.getTaskDir(name)
-    await applyPermissionProfile(dir, profile)
+    await applyPermissionProfile(dir, profile, permLog)
     const config = await store.getConfig(name)
     if (profile) config.permissions = profile
     else delete config.permissions
@@ -1225,7 +1236,7 @@ function registerIpcHandlers(): void {
       throw new Error(`Unknown permission preset: ${profile.preset}`)
     }
     const dir = flowStore.getFlowDir(name)
-    await applyPermissionProfile(dir, profile)
+    await applyPermissionProfile(dir, profile, permLog)
     const config = await flowStore.getConfig(name)
     if (profile) config.permissions = profile
     else delete config.permissions
