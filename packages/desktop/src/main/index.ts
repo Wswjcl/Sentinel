@@ -10,6 +10,11 @@ import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionRes
 import { IPC } from '../shared/ipc-types'
 import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, PermissionAskData, LiveEventData, SkillEntry, SkillWorkspaceKind, SkillWorkspaceRef, ProviderProfile } from '../shared/ipc-types'
 
+// Opt-in remote debugging for renderer forensics: SENTINEL_CDP=9222 npm run dev
+if (process.env.SENTINEL_CDP) {
+  app.commandLine.appendSwitch('remote-debugging-port', process.env.SENTINEL_CDP)
+}
+
 // ─── Globals ───────────────────────────────────────────────────────
 
 let mainWindow: BrowserWindow | null = null
