@@ -120,6 +120,7 @@
     "prompt": "提示词",
     "details": "详情",
     "fileTree": "文件树",
+    "itemsCount": "{{n}} 项",
     "emptyWorkspace": "空工作区",
     "noOutputFiles": "暂无输出文件",
     "outputFiles": "输出文件",

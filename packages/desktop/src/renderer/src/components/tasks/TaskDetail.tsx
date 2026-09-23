@@ -484,6 +484,17 @@ function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => voi
 
 function WorkspaceTab({ tree }: { tree: TreeNode[] }) {
   const { t } = useI18n()
+  // Collapsed directories by path. Default: everything expanded (the
+  // original static behavior); toggling is purely additive.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+
+  const toggle = (path: string): void =>
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
 
   return (
     <div>
@@ -492,32 +503,62 @@ function WorkspaceTab({ tree }: { tree: TreeNode[] }) {
         <p className="text-sm text-[var(--color-text-dim)]">{t('detail.emptyWorkspace')}</p>
       ) : (
         <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-3">
-          <TreeNodes nodes={tree} depth={0} />
+          <TreeNodes nodes={tree} depth={0} collapsed={collapsed} onToggle={toggle} />
         </div>
       )}
     </div>
   )
 }
 
-function TreeNodes({ nodes, depth }: { nodes: TreeNode[]; depth: number }) {
+function TreeNodes({
+  nodes,
+  depth,
+  collapsed,
+  onToggle,
+}: {
+  nodes: TreeNode[]
+  depth: number
+  collapsed: Set<string>
+  onToggle: (path: string) => void
+}) {
+  const { t } = useI18n()
   return (
     <div>
-      {nodes.map((node) => (
-        <div key={node.path}>
-          <div
-            className="flex items-center gap-1.5 py-0.5 text-sm"
-            style={{ paddingLeft: depth * 16 }}
-          >
-            <span className="text-[var(--color-text-dim)]">
-              {node.type === 'dir' ? '📁' : '📄'}
-            </span>
-            <span className={`${node.type === 'dir' ? 'text-[var(--color-text-bright)]' : 'text-[var(--color-text)]'}`}>
-              {node.name}
-            </span>
+      {nodes.map((node) => {
+        const isDir = node.type === 'dir'
+        const isCollapsed = isDir && collapsed.has(node.path)
+        return (
+          <div key={node.path}>
+            <div
+              className={`flex items-center gap-1.5 py-0.5 text-sm rounded ${
+                isDir ? 'cursor-pointer select-none hover:bg-[var(--color-hover)]' : ''
+              }`}
+              style={{ paddingLeft: depth * 16 }}
+              onClick={() => isDir && onToggle(node.path)}
+            >
+              {isDir && (
+                <span className="w-3 shrink-0 text-[10px] text-[var(--color-text-dim)]">
+                  {isCollapsed ? '▶' : '▼'}
+                </span>
+              )}
+              <span className="shrink-0 text-[var(--color-text-dim)]">
+                {isDir ? '📁' : '📄'}
+              </span>
+              <span className={`${isDir ? 'text-[var(--color-text-bright)]' : 'text-[var(--color-text)]'}`}>
+                {node.name}
+              </span>
+              {isCollapsed && node.children && node.children.length > 0 && (
+                <span className="text-xs text-[var(--color-text-dim)]">
+                  {t('detail.itemsCount', { n: node.children.length })}
+                </span>
+              )}
+            </div>
+            {isDir && !isCollapsed && node.children && (
+              <TreeNodes nodes={node.children} depth={depth + 1} collapsed={collapsed} onToggle={onToggle} />
+            )}
           </div>
-          {node.children && <TreeNodes nodes={node.children} depth={depth + 1} />}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

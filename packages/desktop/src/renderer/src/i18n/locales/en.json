@@ -120,6 +120,7 @@
     "prompt": "Prompt",
     "details": "Details",
     "fileTree": "File Tree",
+    "itemsCount": "{{n}} items",
     "emptyWorkspace": "Empty workspace",
     "noOutputFiles": "No output files yet",
     "outputFiles": "Output Files",
