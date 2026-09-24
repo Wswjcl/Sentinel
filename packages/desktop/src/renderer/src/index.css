@@ -41,11 +41,21 @@ body {
   color: var(--color-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   overflow: hidden;
-  user-select: none;
+  /* Content text is copyable by default - reports, descriptions, tables,
+     numbers. Users expect to copy anything they can read. */
+  user-select: text;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Allow text selection in content areas */
+/* Interactive chrome stays clean: clicking / double-clicking controls
+   must not smear a blue selection across the UI. */
+button, button *, a, a *, select, nav, nav *,
+[role="button"], [role="button"] *, [role="tab"], [role="tab"] *,
+input[type="checkbox"], input[type="radio"], .no-select {
+  user-select: none;
+}
+
+/* Opt-in selectable marker (kept for existing call sites) */
 .selectable {
   user-select: text;
 }
