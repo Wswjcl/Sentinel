@@ -1,7 +1,7 @@
 import type {
   TaskConfig, TaskInfo, TaskRunRecord, TaskStatus, AgentLoopConfig,
   FlowConfig, FlowRun, FlowNodeStatus, ManualGateDecision, PermissionProfile,
-  UsageSummary, TaskBudget,
+  UsageSummary, UsageDayBucket, TaskBudget,
 } from '@sentinel/core'
 
 // ─── IPC Channel Names (single source of truth) ────────────────────
@@ -352,7 +352,7 @@ export interface ExposedAPI {
   getTaskPermission(name: string): Promise<{ profile: PermissionProfile | null; applied: boolean }>
   setTaskPermission(name: string, profile: PermissionProfile | null): Promise<{ ok: boolean }>
   getFlowPermission(name: string): Promise<{ profile: PermissionProfile | null; applied: boolean }>
-  getUsage(days: number): Promise<{ summary: UsageSummary; budgets: BudgetStatus[] }>
+  getUsage(days: number): Promise<{ summary: UsageSummary; heatDays: UsageDayBucket[]; budgets: BudgetStatus[] }>
   setFlowPermission(name: string, profile: PermissionProfile | null): Promise<{ ok: boolean }>
   /** Discover model ids on an OpenAI-compatible endpoint (GET /models). */
   fetchProviderModels(baseUrl: string, apiKey?: string): Promise<{ ok: boolean; models: string[] }>

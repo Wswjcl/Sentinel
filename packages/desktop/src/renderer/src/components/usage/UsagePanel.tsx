@@ -95,6 +95,7 @@ export default function UsagePanel() {
   const { t, locale } = useI18n()
   const [days, setDays] = useState<(typeof RANGES)[number]>(30)
   const [summary, setSummary] = useState<UsageSummary | null>(null)
+  const [heatDays, setHeatDays] = useState<UsageDayBucket[]>([])
   const [budgets, setBudgets] = useState<BudgetStatus[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -104,6 +105,7 @@ export default function UsagePanel() {
       .getUsage(d)
       .then((r) => {
         setSummary(r.summary)
+        setHeatDays(r.heatDays)
         setBudgets(r.budgets)
       })
       .catch(console.error)
@@ -114,7 +116,9 @@ export default function UsagePanel() {
     load(days)
   }, [days])
 
-  const heatmap = summary ? buildHeatmap(summary.days, days, locale === 'zh' ? 'zh-CN' : 'en-US') : []
+  // GitHub-style: the heatmap is always a fixed one-year window ending
+  // today, independent of the 7/30/90 summary selector.
+  const heatmap = buildHeatmap(heatDays, 365, locale === 'zh' ? 'zh-CN' : 'en-US')
   const cappedBudgets = budgets.filter((b) => b.budget)
 
   return (
@@ -186,46 +190,42 @@ export default function UsagePanel() {
                 <span>{t('usage.more')}</span>
               </div>
             </div>
-            {summary.days.length === 0 ? (
-              <p className="text-xs text-[var(--color-text-dim)] py-4">{t('usage.empty')}</p>
-            ) : (
-              <div className="flex gap-1.5 py-1">
-                {/* Weekday labels; offset by the 16px month-label row */}
-                <div className="flex flex-col gap-[3px] mt-4 shrink-0">
-                  {WEEKDAY_ROWS.map((label, i) => (
-                    <span key={i} className="w-7 h-[11px] text-[9px] leading-[11px] text-[var(--color-text-dim)]">
-                      {label ? t(`usage.wd${label}`) : ''}
-                    </span>
-                  ))}
-                </div>
-                <div className="flex gap-[3px]">
-                  {heatmap.map((col) => (
-                    <div key={col.key} className="flex flex-col gap-[3px]">
-                      <span className="h-4 text-[9px] leading-4 text-[var(--color-text-dim)] whitespace-nowrap">
-                        {col.monthLabel}
-                      </span>
-                      {col.cells.map((cell, ci) =>
-                        cell ? (
-                          <div key={cell.key} className="relative group">
-                            <span
-                              className="block w-[11px] h-[11px] rounded-[2px] transition-transform group-hover:scale-125"
-                              style={{ background: cell.bg }}
-                            />
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block
-                                           whitespace-nowrap bg-[var(--color-card)] border border-[var(--color-border)]
-                                           rounded px-2 py-1 text-[10px] text-[var(--color-text)] z-20">
-                              {cell.tip}
-                            </div>
-                          </div>
-                        ) : (
-                          <span key={`pad-${ci}`} className="block w-[11px] h-[11px] rounded-[2px]" />
-                        )
-                      )}
-                    </div>
-                  ))}
-                </div>
+            <div className="flex gap-1.5 py-1">
+              {/* Weekday labels; offset by the 16px month-label row */}
+              <div className="flex flex-col gap-[3px] mt-4 shrink-0">
+                {WEEKDAY_ROWS.map((label, i) => (
+                  <span key={i} className="w-7 h-[11px] text-[9px] leading-[11px] text-[var(--color-text-dim)]">
+                    {label ? t(`usage.wd${label}`) : ''}
+                  </span>
+                ))}
               </div>
-            )}
+              <div className="flex gap-[3px]">
+                {heatmap.map((col) => (
+                  <div key={col.key} className="flex flex-col gap-[3px]">
+                    <span className="h-4 text-[9px] leading-4 text-[var(--color-text-dim)] whitespace-nowrap">
+                      {col.monthLabel}
+                    </span>
+                    {col.cells.map((cell, ci) =>
+                      cell ? (
+                        <div key={cell.key} className="relative group">
+                          <span
+                            className="block w-[11px] h-[11px] rounded-[2px] transition-transform group-hover:scale-125"
+                            style={{ background: cell.bg }}
+                          />
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block
+                                         whitespace-nowrap bg-[var(--color-card)] border border-[var(--color-border)]
+                                         rounded px-2 py-1 text-[10px] text-[var(--color-text)] z-20">
+                            {cell.tip}
+                          </div>
+                        </div>
+                      ) : (
+                        <span key={`pad-${ci}`} className="block w-[11px] h-[11px] rounded-[2px]" />
+                      )
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

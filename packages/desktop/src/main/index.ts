@@ -1289,7 +1289,10 @@ function registerIpcHandlers(): void {
         }
       }
     }
-    return { summary: aggregateUsage(records, range), budgets }
+    // Day buckets always cover a full year so the heatmap keeps its
+    // GitHub-style ~52-week shape regardless of the summary range -
+    // only the summary cards and tables follow the 7/30/90 selector.
+    return { summary: aggregateUsage(records, range), heatDays: aggregateUsage(records, 365).days, budgets }
   })
 
   // Discover models on an OpenAI-compatible endpoint (GET /models with
