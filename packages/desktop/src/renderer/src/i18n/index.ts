@@ -35,6 +35,11 @@ if (!g.__sentinelI18n) {
     },
   })
   g.__sentinelI18n = i18n
+} else {
+  // Dev HMR re-execution: refresh bundles in place so locale JSON edits
+  // (new keys included) hot-swap without losing the shared instance.
+  g.__sentinelI18n.addResourceBundle('en', 'translation', en, true, true)
+  g.__sentinelI18n.addResourceBundle('zh', 'translation', zh, true, true)
 }
 
 export { STORAGE_KEY }

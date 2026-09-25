@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { useI18n } from '../../hooks/useI18n'
-import type { UsageSummary } from '@sentinel/core'
+import type { UsageSummary, UsageDayBucket } from '@sentinel/core'
 import type { BudgetStatus } from '../../../../shared/ipc-types'
 
 const RANGES = [7, 30, 90] as const
@@ -9,10 +9,90 @@ const RANGES = [7, 30, 90] as const
 const num = (n: number): string => n.toLocaleString()
 const usd = (n: number): string => `$${n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`
 
+const DAY_MS = 86_400_000
+
+/** GitHub-contribution-style color ramp - CSS vars keep it theme-aware. */
+const HEAT_LEVELS = [
+  'var(--color-hover)',
+  'color-mix(in srgb, var(--color-blue) 25%, transparent)',
+  'color-mix(in srgb, var(--color-blue) 50%, transparent)',
+  'color-mix(in srgb, var(--color-blue) 75%, transparent)',
+  'var(--color-blue)',
+]
+
+/** Weekday label rows; the grid runs Sunday (top) .. Saturday (bottom). */
+const WEEKDAY_ROWS = ['', 'Mon', '', 'Wed', '', 'Fri', ''] as const
+
+const dateKey = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+interface HeatCell {
+  key: string
+  bg: string
+  tip: string
+}
+
+interface HeatColumn {
+  key: string
+  monthLabel: string
+  cells: Array<HeatCell | null>
+}
+
+/** Lay the range out as week columns (Sunday first, GitHub style). Days
+ *  outside the selected window become invisible spacers so columns stay
+ *  aligned; days without usage render as empty squares. */
+function buildHeatmap(buckets: UsageDayBucket[], rangeDays: number, locale: string): HeatColumn[] {
+  const byDate = new Map(buckets.map((d) => [d.date, d]))
+  const max = Math.max(1, ...buckets.map((d) => d.total))
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const start = new Date(today)
+  start.setDate(start.getDate() - (rangeDays - 1))
+  const gridStart = new Date(start)
+  gridStart.setDate(gridStart.getDate() - gridStart.getDay())
+
+  const columns: HeatColumn[] = []
+  let lastMonth = -1
+  const cursor = new Date(gridStart)
+  for (let w = 0; ; w++) {
+    const cells: Array<HeatCell | null> = []
+    let visible = 0
+    let firstVisible: Date | null = null
+    for (let dow = 0; dow < 7; dow++) {
+      const d = new Date(cursor)
+      cursor.setDate(cursor.getDate() + 1)
+      if (d < start || d > today) {
+        cells.push(null)
+        continue
+      }
+      visible++
+      if (!firstVisible) firstVisible = d
+      const key = dateKey(d)
+      const b = byDate.get(key)
+      const total = b?.total ?? 0
+      const level = total <= 0 ? 0 : Math.min(4, Math.max(1, Math.ceil((total / max) * 4)))
+      cells.push({
+        key,
+        bg: HEAT_LEVELS[level],
+        tip: `${key} · ${num(total)} tok · ${usd(b?.cost ?? 0)}`,
+      })
+    }
+    if (visible === 0) break
+    // `locale` arrives as a BCP-47 tag ('zh-CN' / 'en-US') - use it as-is
+    const label =
+      firstVisible && firstVisible.getMonth() !== lastMonth
+        ? firstVisible.toLocaleDateString(locale, { month: 'short' })
+        : ''
+    if (label && firstVisible) lastMonth = firstVisible.getMonth()
+    columns.push({ key: `w${w}`, monthLabel: label, cells })
+  }
+  return columns
+}
+
 /** Usage dashboard: tokens & cost aggregated from local run records
  *  (task histories + flow AI-node runs), plus per-task budget progress. */
 export default function UsagePanel() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const [days, setDays] = useState<(typeof RANGES)[number]>(30)
   const [summary, setSummary] = useState<UsageSummary | null>(null)
   const [budgets, setBudgets] = useState<BudgetStatus[]>([])
@@ -34,7 +114,7 @@ export default function UsagePanel() {
     load(days)
   }, [days])
 
-  const maxDay = Math.max(1, ...(summary?.days ?? []).map((d) => d.total))
+  const heatmap = summary ? buildHeatmap(summary.days, days, locale === 'zh' ? 'zh-CN' : 'en-US') : []
   const cappedBudgets = budgets.filter((b) => b.budget)
 
   return (
@@ -92,31 +172,58 @@ export default function UsagePanel() {
             </div>
           </div>
 
-          {/* Daily trend */}
+          {/* Daily heatmap (GitHub contribution style) */}
           <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-4 mb-4">
-            <h2 className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider mb-3">
-              {t('usage.trend')}
-            </h2>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
+                {t('usage.trend')}
+              </h2>
+              <div className="flex items-center gap-1 text-[9px] text-[var(--color-text-dim)]">
+                <span>{t('usage.less')}</span>
+                {HEAT_LEVELS.map((bg) => (
+                  <span key={bg} className="w-[10px] h-[10px] rounded-[2px]" style={{ background: bg }} />
+                ))}
+                <span>{t('usage.more')}</span>
+              </div>
+            </div>
             {summary.days.length === 0 ? (
               <p className="text-xs text-[var(--color-text-dim)] py-4">{t('usage.empty')}</p>
             ) : (
-              <div className="flex items-end gap-1 h-28">
-                {summary.days.map((d) => (
-                  <div key={d.date} className="flex-1 flex flex-col items-center gap-1 group relative min-w-0">
-                    <div
-                      className="w-full rounded-t bg-[var(--color-blue)]/70 hover:bg-[var(--color-blue)] transition-colors"
-                      style={{ height: `${Math.max(3, (d.total / maxDay) * 88)}px` }}
-                    />
-                    <span className="text-[9px] text-[var(--color-text-dim)] truncate w-full text-center">
-                      {d.date.slice(5)}
+              <div className="flex gap-1.5 py-1">
+                {/* Weekday labels; offset by the 16px month-label row */}
+                <div className="flex flex-col gap-[3px] mt-4 shrink-0">
+                  {WEEKDAY_ROWS.map((label, i) => (
+                    <span key={i} className="w-7 h-[11px] text-[9px] leading-[11px] text-[var(--color-text-dim)]">
+                      {label ? t(`usage.wd${label}`) : ''}
                     </span>
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block
-                                   whitespace-nowrap bg-[var(--color-card)] border border-[var(--color-border)]
-                                   rounded px-2 py-1 text-[10px] text-[var(--color-text)] z-10">
-                      {d.date} · {num(d.total)} tok · {usd(d.cost)}
+                  ))}
+                </div>
+                <div className="flex gap-[3px]">
+                  {heatmap.map((col) => (
+                    <div key={col.key} className="flex flex-col gap-[3px]">
+                      <span className="h-4 text-[9px] leading-4 text-[var(--color-text-dim)] whitespace-nowrap">
+                        {col.monthLabel}
+                      </span>
+                      {col.cells.map((cell, ci) =>
+                        cell ? (
+                          <div key={cell.key} className="relative group">
+                            <span
+                              className="block w-[11px] h-[11px] rounded-[2px] transition-transform group-hover:scale-125"
+                              style={{ background: cell.bg }}
+                            />
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block
+                                           whitespace-nowrap bg-[var(--color-card)] border border-[var(--color-border)]
+                                           rounded px-2 py-1 text-[10px] text-[var(--color-text)] z-20">
+                              {cell.tip}
+                            </div>
+                          </div>
+                        ) : (
+                          <span key={`pad-${ci}`} className="block w-[11px] h-[11px] rounded-[2px]" />
+                        )
+                      )}
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
           </div>
