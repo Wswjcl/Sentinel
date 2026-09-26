@@ -484,12 +484,12 @@ function OverviewTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => voi
 
 function WorkspaceTab({ tree }: { tree: TreeNode[] }) {
   const { t } = useI18n()
-  // Collapsed directories by path. Default: everything expanded (the
-  // original static behavior); toggling is purely additive.
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  // Expanded directories by path. Default: everything collapsed - the
+  // tree starts as a compact list of top-level entries.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const toggle = (path: string): void =>
-    setCollapsed((prev) => {
+    setExpanded((prev) => {
       const next = new Set(prev)
       if (next.has(path)) next.delete(path)
       else next.add(path)
@@ -503,7 +503,7 @@ function WorkspaceTab({ tree }: { tree: TreeNode[] }) {
         <p className="text-sm text-[var(--color-text-dim)]">{t('detail.emptyWorkspace')}</p>
       ) : (
         <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-3">
-          <TreeNodes nodes={tree} depth={0} collapsed={collapsed} onToggle={toggle} />
+          <TreeNodes nodes={tree} depth={0} expanded={expanded} onToggle={toggle} />
         </div>
       )}
     </div>
@@ -513,12 +513,12 @@ function WorkspaceTab({ tree }: { tree: TreeNode[] }) {
 function TreeNodes({
   nodes,
   depth,
-  collapsed,
+  expanded,
   onToggle,
 }: {
   nodes: TreeNode[]
   depth: number
-  collapsed: Set<string>
+  expanded: Set<string>
   onToggle: (path: string) => void
 }) {
   const { t } = useI18n()
@@ -526,7 +526,7 @@ function TreeNodes({
     <div>
       {nodes.map((node) => {
         const isDir = node.type === 'dir'
-        const isCollapsed = isDir && collapsed.has(node.path)
+        const isOpen = isDir && expanded.has(node.path)
         return (
           <div key={node.path}>
             <div
@@ -538,7 +538,7 @@ function TreeNodes({
             >
               {isDir && (
                 <span className="w-3 shrink-0 text-[10px] text-[var(--color-text-dim)]">
-                  {isCollapsed ? '▶' : '▼'}
+                  {isOpen ? '▼' : '▶'}
                 </span>
               )}
               <span className="shrink-0 text-[var(--color-text-dim)]">
@@ -547,14 +547,14 @@ function TreeNodes({
               <span className={`${isDir ? 'text-[var(--color-text-bright)]' : 'text-[var(--color-text)]'}`}>
                 {node.name}
               </span>
-              {isCollapsed && node.children && node.children.length > 0 && (
+              {isDir && !isOpen && node.children && node.children.length > 0 && (
                 <span className="text-xs text-[var(--color-text-dim)]">
                   {t('detail.itemsCount', { n: node.children.length })}
                 </span>
               )}
             </div>
-            {isDir && !isCollapsed && node.children && (
-              <TreeNodes nodes={node.children} depth={depth + 1} collapsed={collapsed} onToggle={onToggle} />
+            {isDir && isOpen && node.children && (
+              <TreeNodes nodes={node.children} depth={depth + 1} expanded={expanded} onToggle={onToggle} />
             )}
           </div>
         )
