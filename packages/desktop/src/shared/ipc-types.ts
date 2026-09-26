@@ -214,7 +214,7 @@ export interface SkillEntry extends SkillWorkspaceRef {
 
 // ─── Serve runtime (R3) ─────────────────────────────────────────────
 
-export type RuntimeMode = 'cli' | 'serve'
+export type RuntimeMode = 'cli' | 'serve' | 'claude'
 
 export interface PermissionAskData {
   id: string

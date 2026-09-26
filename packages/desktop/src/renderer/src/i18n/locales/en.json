@@ -197,6 +197,7 @@
     "runtimeMode": "Runtime mode",
     "runtimeCli": "CLI (background, no live view)",
     "runtimeServe": "Serve live (live output, permission dialogs, abortable)",
+    "runtimeClaude": "Claude Code (Agent SDK via protocol gateway, live output, permission dialogs, abortable)",
     "opencodeConfig": "OpenCode Config (.opencode/opencode.json)",
     "taskConfig": "Task Config (task.yaml)",
     "saving": "Saving...",

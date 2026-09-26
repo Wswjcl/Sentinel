@@ -15,6 +15,11 @@ files:
   - '!electron.vite.config.*'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+# Native Claude CLI binaries cannot be spawned from inside the asar -
+# extract the Agent SDK and its platform packages next to it.
+asarUnpack:
+  - 'node_modules/@anthropic-ai/claude-agent-sdk/**'
+  - 'node_modules/@anthropic-ai/claude-agent-sdk-*/**'
 win:
   executableName: sentinel
   icon: resources/icon.ico

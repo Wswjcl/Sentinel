@@ -7,6 +7,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents, applyProviderBinding, resolveWindowsBinary, applyPermissionProfile, hasPermissionProfile, aggregateUsage, monthToDate } from '@sentinel/core'
 import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult, ManualGateDecision, PermissionProfile, PermissionAskRecord, UsageRecordish, TaskBudget } from '@sentinel/core'
+import { makeClaudeExecutor } from './claude-executor'
 import { IPC } from '../shared/ipc-types'
 import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, PermissionAskData, LiveEventData, SkillEntry, SkillWorkspaceKind, SkillWorkspaceRef, ProviderProfile } from '../shared/ipc-types'
 
@@ -126,7 +127,7 @@ const taskAbortControllers = new Map<string, Set<AbortController>>()
 async function loadRuntimeMode(): Promise<void> {
   try {
     const raw = JSON.parse(await fs.readFile(RUNTIME_FILE, 'utf8'))
-    if (raw.mode === 'serve' || raw.mode === 'cli') runtimeMode = raw.mode
+    if (raw.mode === 'serve' || raw.mode === 'cli' || raw.mode === 'claude') runtimeMode = raw.mode
   } catch {}
 }
 
@@ -254,11 +255,46 @@ function makeServeExecutor(
 
 /** Mode-aware executor used by manual runs, the scheduler and flow AI
  *  nodes: serve mode when selected (falling back to CLI if the server
- *  can't start), plain CLI otherwise. Decides per execution, so toggling
- *  the mode in Settings applies without restart. */
+ *  can't start), claude mode through the Agent SDK + protocol gateway,
+ *  plain CLI otherwise. Decides per execution, so toggling the mode in
+ *  Settings applies without restart. */
+const claudeExecutor = makeClaudeExecutor({
+  profiles: listProviderProfiles,
+  claudeConfigDir: join(DATA_DIR, 'claude-home'),
+  abortControllers: taskAbortControllers,
+  onEvent: (name, event) => {
+    mainWindow?.webContents.send(IPC.EVENT_TASK_LIVE, { name, event })
+  },
+  askPermission: (name, ask) =>
+    new Promise<PermissionResponse>((resolve) => {
+      permissionWaiters.set(ask.id, resolve)
+      mainWindow?.webContents.send(IPC.EVENT_TASK_PERMISSION, { name, request: ask })
+      notifyPermissionAsk(name, ask)
+    }),
+  dropPermission: (askId) => {
+    permissionWaiters.delete(askId)
+  },
+  onPermissionResult: (name, ask, response) => {
+    mainWindow?.webContents.send(IPC.EVENT_TASK_PERMISSION_RESULT, {
+      name, id: ask.id, response,
+    })
+    sentinelEvents.emit('scheduler:log', {
+      level: 'warn',
+      msg: `[perm] ${name}: ${ask.permission}${ask.patterns.length ? ` (${ask.patterns[0]})` : ''} → ${response === 'timeout' ? 'timeout-deny' : response}`,
+    })
+  },
+  onLog: (level, msg) => sentinelEvents.emit('scheduler:log', { level, msg }),
+})
+
 const dynamicExecutor = async (
   options: ExecutorOptions,
 ): Promise<ExecutionResult> => {
+  if (runtimeMode === 'claude') {
+    // Fail-closed: no CLI fallback here - silently rerouting a run to
+    // opencode would execute it against a different provider than the
+    // task's binding. Configuration problems surface as failed runs.
+    return claudeExecutor(options)
+  }
   if (runtimeMode === 'serve') {
     try {
       const server = await getServeServer()

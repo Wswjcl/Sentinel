@@ -164,7 +164,11 @@ export default function SettingsPanel() {
             <div>
               <div className="text-sm text-[var(--color-text)]">{t('detail.runtimeMode')}</div>
               <div className="text-xs text-[var(--color-text-dim)]">
-                {runtimeMode === 'serve' ? t('detail.runtimeServe') : t('detail.runtimeCli')}
+                {runtimeMode === 'serve'
+                  ? t('detail.runtimeServe')
+                  : runtimeMode === 'claude'
+                    ? t('detail.runtimeClaude')
+                    : t('detail.runtimeCli')}
               </div>
             </div>
             <div className="flex gap-2">
@@ -189,6 +193,17 @@ export default function SettingsPanel() {
               >
                 <Zap className="w-3 h-3" />
                 Serve
+              </button>
+              <button
+                onClick={() => changeRuntimeMode('claude')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  runtimeMode === 'claude'
+                    ? 'bg-[var(--color-blue)] text-white'
+                    : 'bg-[var(--color-hover)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                }`}
+              >
+                <Zap className="w-3 h-3" />
+                Claude
               </button>
             </div>
           </div>
