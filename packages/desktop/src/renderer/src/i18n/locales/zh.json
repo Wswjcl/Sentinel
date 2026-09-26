@@ -23,6 +23,7 @@
     "timezone": "时区",
     "tzSystem": "跟随系统",
     "modeLabel": "运行方式",
+    "descManual": "仅手动运行（不自动调度）",
     "modeScheduled": "按计划自动运行",
     "modeManual": "仅手动",
     "manualHint": "不自动运行；在任务详情页点「运行」手动触发。",

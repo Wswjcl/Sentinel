@@ -23,6 +23,7 @@
     "timezone": "Timezone",
     "tzSystem": "System default",
     "modeLabel": "Run mode",
+    "descManual": "Manual runs only (never auto-scheduled)",
     "modeScheduled": "On a schedule",
     "modeManual": "Manual only",
     "manualHint": "Never auto-runs; trigger it with the Run button on the task page.",

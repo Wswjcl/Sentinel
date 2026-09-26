@@ -158,6 +158,7 @@ export function describeScheduleText(
   t: (key: string, opts?: Record<string, unknown>) => string,
   locale: string,
 ): string {
+  if (schedule.type === 'manual') return t('schedule.descManual')
   if (schedule.type === 'once') return t('schedule.descOnce')
   if (schedule.type === 'at') return describeAtText(schedule, t, locale)
   if (schedule.type === 'interval') {

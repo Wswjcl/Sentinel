@@ -566,9 +566,18 @@ function registerIpcHandlers(): void {
     const existing = await store.getConfig(name)
     if (opts.description !== undefined) existing.description = opts.description
     if (opts.schedule) {
-      if (opts.schedule.type) existing.schedule.type = opts.schedule.type as 'cron' | 'interval' | 'once'
-      if (opts.schedule.expr) existing.schedule.expr = opts.schedule.expr
-      if (opts.schedule.timezone) existing.schedule.timezone = opts.schedule.timezone
+      // Mode conversion: 'manual' wipes the schedule fields; scheduled
+      // types update each present field (interval/maxRuns included, so
+      // 'at' cadence edits persist).
+      if (opts.schedule.type === 'manual') {
+        existing.schedule = { type: 'manual', expr: '' }
+      } else {
+        if (opts.schedule.type) existing.schedule.type = opts.schedule.type as 'cron' | 'interval' | 'once' | 'at'
+        if (opts.schedule.expr) existing.schedule.expr = opts.schedule.expr
+        if (opts.schedule.timezone !== undefined) existing.schedule.timezone = opts.schedule.timezone
+        if (opts.schedule.interval !== undefined) existing.schedule.interval = opts.schedule.interval
+        if (opts.schedule.maxRuns !== undefined) existing.schedule.maxRuns = opts.schedule.maxRuns
+      }
     }
     if (opts.execution) {
       if (opts.execution.prompt !== undefined) existing.execution.prompt = opts.execution.prompt

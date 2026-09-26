@@ -4,6 +4,7 @@ import { ArrowLeft, Play, Pause, Trash2, RefreshCw, FolderOpen, FileText, Clock,
 import { useI18n } from '../../hooks/useI18n'
 import { useModelOptions } from '../../hooks/useModels'
 import { describeScheduleText } from '../../lib/schedule'
+import ScheduleEditor from './ScheduleEditor'
 import PermissionCard from './PermissionCard'
 import type { TreeNode, OutputFile, PermissionAskData, LiveEventData, ProviderProfile } from '../../../../shared/ipc-types'
 
@@ -846,6 +847,23 @@ function ConfigTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => void 
   const [dirty, setDirty] = useState(false)
   const { t } = useI18n()
 
+  // Schedule editor draft - supports converting between manual and
+  // scheduled modes after creation.
+  const [scheduleDraft, setScheduleDraft] = useState(task.config.schedule)
+  const [scheduleDirty, setScheduleDirty] = useState(false)
+  const [scheduleSaving, setScheduleSaving] = useState(false)
+
+  const handleScheduleSave = async () => {
+    setScheduleSaving(true)
+    try {
+      await window.api.updateTask(task.config.name, { schedule: scheduleDraft })
+      setScheduleDirty(false)
+      onRefresh()
+    } finally {
+      setScheduleSaving(false)
+    }
+  }
+
   useEffect(() => {
     window.api.getOpenCodeConfig(task.config.name).then((c) => {
       setConfig(JSON.stringify(c, null, 2))
@@ -854,6 +872,8 @@ function ConfigTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => void 
 
   useEffect(() => {
     setTaskConfigText(JSON.stringify(task.config, null, 2))
+    setScheduleDraft(task.config.schedule)
+    setScheduleDirty(false)
   }, [task.config])
 
   const handleSave = async () => {
@@ -873,6 +893,24 @@ function ConfigTab({ task, onRefresh }: { task: TaskInfo; onRefresh: () => void 
 
   return (
     <div className="space-y-4">
+      {/* Schedule editor — manual ↔ scheduled conversion lives here */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <h3 className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
+            {t('detail.schedule')}
+          </h3>
+          <button
+            onClick={() => void handleScheduleSave()}
+            disabled={!scheduleDirty || scheduleSaving}
+            className="px-3 py-1 rounded text-xs font-medium bg-[var(--color-blue)] text-[var(--color-bg)]
+                       hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+          >
+            {scheduleSaving ? t('detail.saving') : t('detail.save')}
+          </button>
+        </div>
+        <ScheduleEditor value={scheduleDraft} onChange={(v) => { setScheduleDraft(v); setScheduleDirty(true) }} />
+      </div>
+
       {/* OpenCode config */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
