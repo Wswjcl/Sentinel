@@ -13,6 +13,7 @@ export type { PermissionProfile, PermissionPreset, PermissionLevel } from './typ
 export type { TaskBudget } from './types.js'
 export type { PermissionAskRecord } from './types.js'
 export { aggregateUsage, monthToDate, localDayKey, localMonthKey } from './usage.js'
+export { ProtocolGateway } from './gateway/index.js'
 export type { UsageRecordish, UsageSummary, UsageDayBucket, UsageModelBucket, UsageSourceBucket } from './usage.js'
 export { OpenCodeEventParser } from './opencode-events.js'
 export { OpenCodeServer } from './opencode-server.js'
