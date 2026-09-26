@@ -568,7 +568,8 @@ function registerIpcHandlers(): void {
     if (opts.schedule) {
       // Mode conversion: 'manual' wipes the schedule fields; scheduled
       // types update each present field (interval/maxRuns included, so
-      // 'at' cadence edits persist).
+      // 'at' cadence edits persist). Validated like TASKS_CREATE - a
+      // type/expr mismatch would silently produce a never-running task.
       if (opts.schedule.type === 'manual') {
         existing.schedule = { type: 'manual', expr: '' }
       } else {
@@ -577,6 +578,9 @@ function registerIpcHandlers(): void {
         if (opts.schedule.timezone !== undefined) existing.schedule.timezone = opts.schedule.timezone
         if (opts.schedule.interval !== undefined) existing.schedule.interval = opts.schedule.interval
         if (opts.schedule.maxRuns !== undefined) existing.schedule.maxRuns = opts.schedule.maxRuns
+        if (opts.schedule.type && !isValidSchedule(existing.schedule.type, existing.schedule.expr)) {
+          throw new Error(`Invalid ${existing.schedule.type} expression: ${existing.schedule.expr}`)
+        }
       }
     }
     if (opts.execution) {
