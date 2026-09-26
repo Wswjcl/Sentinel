@@ -204,10 +204,12 @@ export class ProtocolGateway {
       res.end()
     } catch (err) {
       this.options.onLog?.('warn', `[gateway] stream interrupted: ${String(err)}`)
-      // Best effort: close the Anthropic stream so the SDK sees a
-      // terminated message rather than hanging forever.
-      if (!res.writableEnded) {
-        writeFrame(res, translator.finish(lastFinishReason))
+      // Terminate the Anthropic stream with an explicit `error` event:
+      // closing with a normal message_stop would make the client read a
+      // truncated stream as a successful (usually empty) completion.
+      // A client hang-up (the abort source) has res destroyed - skip.
+      if (!res.writableEnded && !res.destroyed) {
+        writeFrame(res, streamErrorFrame(`upstream stream interrupted: ${String(err)}`))
         res.end()
       }
     }
@@ -219,6 +221,14 @@ function writeFrame(res: http.ServerResponse, frame: string): void {
     // Rare on loopback; keep correctness over throughput.
     res.once('drain', () => undefined)
   }
+}
+
+/** Terminal Anthropic SSE error event (mid-stream failure). */
+function streamErrorFrame(message: string): string {
+  return `event: error\ndata: ${JSON.stringify({
+    type: 'error',
+    error: { type: 'api_error', message },
+  })}\n\n`
 }
 
 function readJson(req: http.IncomingMessage): Promise<unknown> {

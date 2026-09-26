@@ -7,10 +7,10 @@
  * will consume.
  */
 import http from 'node:http'
-import { pathToFileURL } from 'node:url'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 
-const coreDist = process.argv[2] ?? new URL('../packages/core/dist/', import.meta.url).pathname
+const coreDist = process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '../packages/core/dist/')
 const { ProtocolGateway } = await import(pathToFileURL(join(coreDist, 'gateway/index.js')).href)
 
 let pass = 0
@@ -67,6 +67,13 @@ const upstream = http.createServer((req, res) => {
       send({ choices: [{ delta: { content: ' world' } }] })
       send({ choices: [{ delta: {}, finish_reason: 'stop' }] })
       send({ choices: [], usage: { prompt_tokens: 12, completion_tokens: 3 } })
+    } else if (scenario === 'stream-abort') {
+      // Start a normal stream, let the gateway relay the opening frames,
+      // then cut the connection mid-flight.
+      send({ choices: [{ delta: { role: 'assistant' } }] })
+      send({ choices: [{ delta: { content: 'partial' } }] })
+      setTimeout(() => res.destroy(), 50)
+      return
     } else if (scenario === 'stream-tool') {
       send({ choices: [{ delta: { role: 'assistant' } }] })
       send({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_1', function: { name: 'get_weather', arguments: '{"city":' } }] } }] })
@@ -205,6 +212,15 @@ scenario = 'error'
 const r6 = await postMessages({ model: 'mock-model', max_tokens: 10, messages: [{ role: 'user', content: 'x' }] })
 check('error: 401 status', r6.status === 401)
 check('error: anthropic error envelope', r6.json.type === 'error' && r6.json.error?.type === 'authentication_error' && r6.json.error?.message === 'bad key')
+
+// ─── 6b. Interrupted upstream stream → terminal error event ───────
+
+scenario = 'stream-abort'
+const r6b = await postStream({ model: 'mock-model', max_tokens: 50, messages: [{ role: 'user', content: 'q' }] })
+const ev6b = r6b.frames.map((f) => f.event)
+check('stream abort: ends with error event', ev6b.at(-1) === 'error', JSON.stringify(ev6b))
+check('stream abort: error is api_error envelope', r6b.frames.at(-1)?.data?.type === 'error' && r6b.frames.at(-1)?.data?.error?.type === 'api_error')
+check('stream abort: no message_stop after truncation', !ev6b.includes('message_stop'))
 
 // ─── 7. count_tokens + models proxy ────────────────────────────────
 

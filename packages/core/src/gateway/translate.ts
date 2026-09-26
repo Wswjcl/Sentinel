@@ -431,7 +431,7 @@ export class StreamTranslator {
 /** Rough token estimate for /v1/messages/count_tokens (the Anthropic
  *  SDK only needs a plausible number for context-window management). */
 export function estimateInputTokens(req: AnthropicMessagesRequest): number {
-  let chars = textOfContent(req.messages[0]?.content ?? '')
+  let chars = ''
   for (const m of req.messages) chars += textOfContent(m.content)
   if (typeof req.system === 'string') chars += req.system
   else chars += (req.system ?? []).map((b) => b.text).join('')
