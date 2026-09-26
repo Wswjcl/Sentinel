@@ -1,0 +1,13 @@
+name: manual-test
+description: manual-test
+version: 1
+schedule:
+  type: manual
+  expr: ""
+execution:
+  prompt: manual test task
+  agent: default
+  timeout: 600
+  retry:
+    max: 2
+    delay: 60

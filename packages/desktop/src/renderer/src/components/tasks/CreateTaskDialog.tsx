@@ -79,7 +79,10 @@ export default function CreateTaskDialog({ onClose, onCreated }: CreateTaskDialo
         name: name.trim(),
         description: description.trim() || undefined,
         projectDir: projectDir.trim() || undefined,
-        schedule: { type: schedule.type, expr: schedule.expr, timezone: schedule.timezone, interval: schedule.interval, maxRuns: schedule.maxRuns },
+        // manual tasks carry an empty expr - they never auto-run
+        schedule: schedule.type === 'manual'
+          ? { type: 'manual', expr: '' }
+          : { type: schedule.type, expr: schedule.expr, timezone: schedule.timezone, interval: schedule.interval, maxRuns: schedule.maxRuns },
         execution: {
           prompt: prompt.trim(),
           model: model.trim() || undefined,

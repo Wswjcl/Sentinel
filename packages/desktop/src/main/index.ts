@@ -462,8 +462,10 @@ function registerIpcHandlers(): void {
       description: opts.description || opts.name,
       version: 1,
       schedule: {
-        type: (opts.schedule?.type as 'cron' | 'interval' | 'once' | 'at') || 'cron',
-        expr: opts.schedule?.expr || '0 9 * * *',
+        type: (opts.schedule?.type as 'cron' | 'interval' | 'once' | 'at' | 'manual') || 'cron',
+        // manual tasks keep an empty expr - the '0 9 * * *' default is
+        // only for legacy callers that pass a type without an expr
+        expr: opts.schedule?.type === 'manual' ? '' : (opts.schedule?.expr || '0 9 * * *'),
         timezone: opts.schedule?.timezone,
         interval: opts.schedule?.interval,
         maxRuns: opts.schedule?.maxRuns,

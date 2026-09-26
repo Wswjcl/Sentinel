@@ -71,7 +71,9 @@ export default function TaskCard({ task, onClick }: TaskCardProps) {
       {/* Meta row */}
       <div className="flex items-center gap-4 text-[10px] text-[var(--color-text-dim)]">
         <span title={t('task.schedule')}>
-          {config.schedule.type}: {config.schedule.expr}
+          {config.schedule.type === 'manual'
+            ? t('task.scheduleManual')
+            : `${config.schedule.type}: ${config.schedule.expr}`}
         </span>
         <span title={t('task.runCountTitle')}>
           {t('task.runCount', { count: runCount })}

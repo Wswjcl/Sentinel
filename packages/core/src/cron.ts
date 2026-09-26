@@ -81,6 +81,7 @@ export function shouldRunInterval(
  * Accepts both cron expressions and interval expressions.
  */
 export function isValidSchedule(type: string, expr: string): boolean {
+  if (type === 'manual') return true
   if (type === 'cron') return isValidCron(expr)
   if (type === 'interval') return parseInterval(expr) !== null
   if (type === 'once') return expr.trim().length > 0

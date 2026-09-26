@@ -325,7 +325,9 @@ export class TaskStore {
     let nextRun: string | undefined
     try {
       nextRun =
-        config.schedule.type === 'at'
+        config.schedule.type === 'manual'
+          ? undefined
+          : config.schedule.type === 'at'
           ? (nextAtRun(
               config.schedule.expr,
               config.schedule.interval,

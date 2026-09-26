@@ -4,7 +4,7 @@ import { useI18n } from '../../hooks/useI18n'
 import { zonedWallToUtcIso, utcIsoToZonedWall } from '../../lib/schedule'
 
 export interface ScheduleValue {
-  type: 'cron' | 'interval' | 'once' | 'at'
+  type: 'cron' | 'interval' | 'once' | 'at' | 'manual'
   expr: string
   timezone?: string
   interval?: string
@@ -110,10 +110,33 @@ export default function ScheduleEditor({ value, onChange }: ScheduleEditorProps)
       })
     : undefined
 
+  const isManual = value.type === 'manual'
+
   return (
     <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-hover)]/40 p-3 space-y-3">
-      {/* Row 1: start datetime + timezone */}
-      <div className="grid grid-cols-[minmax(0,1fr)_11rem] gap-3">
+      {/* Row 0: run mode - scheduled vs manual-only */}
+      <Field label={t('schedule.modeLabel')}>
+        <select
+          value={isManual ? 'manual' : 'scheduled'}
+          onChange={(e) => {
+            if (e.target.value === 'manual') onChange({ type: 'manual', expr: '' })
+            else onChange(emit(value, stateFromValue({ ...value, type: 'at' }), tz))
+          }}
+          className={inputCls}
+        >
+          <option value="scheduled">{t('schedule.modeScheduled')}</option>
+          <option value="manual">{t('schedule.modeManual')}</option>
+        </select>
+      </Field>
+
+      {isManual && (
+        <p className="text-xs text-[var(--color-text-dim)]">{t('schedule.manualHint')}</p>
+      )}
+
+      {/* Rows 1-3: only for scheduled runs */}
+      {!isManual && (
+        <>
+        <div className="grid grid-cols-[minmax(0,1fr)_11rem] gap-3">
         <Field label={t('schedule.startLabel')}>
           <input
             type="datetime-local"
@@ -198,8 +221,11 @@ export default function ScheduleEditor({ value, onChange }: ScheduleEditorProps)
         </Field>
       )}
 
+        </>
+      )}
+
       {/* Preview */}
-      {value.type === 'at' && value.expr && (
+      {!isManual && value.type === 'at' && value.expr && (
         <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] pt-0.5">
           <Clock className="w-3.5 h-3.5 shrink-0 text-[var(--color-text-dim)]" />
           <span>

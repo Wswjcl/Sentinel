@@ -94,6 +94,8 @@ export class Scheduler {
 
         // Skip paused and archived tasks
         if (info.status === 'paused' || info.status === 'archived') continue
+        // Manual tasks never auto-run - only the task page / CLI triggers them
+        if (schedule.type === 'manual') continue
 
         let shouldRun = false
 

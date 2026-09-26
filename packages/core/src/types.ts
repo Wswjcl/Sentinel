@@ -1,5 +1,7 @@
 export interface TaskSchedule {
-  type: 'cron' | 'interval' | 'once' | 'at'
+  /** 'manual': the task never auto-runs - it is triggered only from the
+   *  task page / `sentinel run`. Carries an empty expr. */
+  type: 'cron' | 'interval' | 'once' | 'at' | 'manual'
   expr: string
   timezone?: string
   /** For type 'at' (v3.6.0): repeat cadence after the start time
