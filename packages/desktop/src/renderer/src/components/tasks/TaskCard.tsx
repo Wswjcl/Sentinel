@@ -1,5 +1,6 @@
 import type { TaskInfo, TaskStatus } from '@sentinel/core'
 import { useI18n } from '../../hooks/useI18n'
+import { describeScheduleText } from '../../lib/schedule'
 
 interface TaskCardProps {
   task: TaskInfo
@@ -33,14 +34,20 @@ function formatRelativeTime(iso: string | undefined, t: ReturnType<typeof useI18
   const prefix = diff > 0 ? '' : t('task.in')
 
   if (absDiff < 60_000) return diff > 0 ? t('task.justNow') : t('task.soon')
-  if (absDiff < 3_600_000) return `${prefix}${Math.floor(absDiff / 60_000)}m`
-  if (absDiff < 86_400_000) return `${prefix}${Math.floor(absDiff / 3_600_000)}h`
-  return `${prefix}${Math.floor(absDiff / 86_400_000)}d`
+  const unit =
+    absDiff < 3_600_000 ? t('schedule.unitMinutes')
+    : absDiff < 86_400_000 ? t('schedule.unitHours')
+    : t('schedule.unitDays')
+  const n =
+    absDiff < 3_600_000 ? Math.floor(absDiff / 60_000)
+    : absDiff < 86_400_000 ? Math.floor(absDiff / 3_600_000)
+    : Math.floor(absDiff / 86_400_000)
+  return `${prefix}${n} ${unit}`
 }
 
 export default function TaskCard({ task, onClick }: TaskCardProps) {
   const { config, status, lastRun, nextRun, runCount } = task
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
 
   return (
     <button
@@ -71,9 +78,7 @@ export default function TaskCard({ task, onClick }: TaskCardProps) {
       {/* Meta row */}
       <div className="flex items-center gap-4 text-[10px] text-[var(--color-text-dim)]">
         <span title={t('task.schedule')}>
-          {config.schedule.type === 'manual'
-            ? t('task.scheduleManual')
-            : `${config.schedule.type}: ${config.schedule.expr}`}
+          {describeScheduleText(config.schedule, t, locale)}
         </span>
         <span title={t('task.runCountTitle')}>
           {t('task.runCount', { count: runCount })}

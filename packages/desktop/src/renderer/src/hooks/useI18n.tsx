@@ -27,11 +27,23 @@ interface I18nContextValue {
   t: (key: string, options?: Record<string, unknown>) => string
 }
 
-const I18nContext = createContext<I18nContextValue>({
+let I18nContext = createContext<I18nContextValue>({
   locale: 'en',
   setLocale: () => {},
   t: (key: string) => key,
 })
+
+// Dev HMR re-executes this module (locale JSON edits propagate through
+// ../i18n into here), which would mint a fresh context identity - stale
+// module generations (e.g. Sidebar) keep consuming the old context and
+// fall back to the identity `t`, rendering raw key names. Cache the
+// context on globalThis so every module generation shares one, mirroring
+// the i18next singleton in ../i18n.
+{
+  const g = globalThis as unknown as { __sentinelI18nCtx?: typeof I18nContext }
+  if (g.__sentinelI18nCtx) I18nContext = g.__sentinelI18nCtx
+  else g.__sentinelI18nCtx = I18nContext
+}
 
 // ─── Provider ──────────────────────────────────────────────────────
 
