@@ -9,7 +9,7 @@ import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeT
 import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult, ManualGateDecision, PermissionProfile, PermissionAskRecord, UsageRecordish, TaskBudget } from '@sentinel/core'
 import { makeClaudeExecutor } from './claude-executor'
 import { IPC } from '../shared/ipc-types'
-import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, PermissionAskData, LiveEventData, SkillEntry, SkillWorkspaceKind, SkillWorkspaceRef, ProviderProfile } from '../shared/ipc-types'
+import type { CreateTaskOpts, TreeNode, OutputFile, SkillInfo, LoopEventData, FlowEventData, RuntimeMode, RuntimeDescriptor, PermissionAskData, LiveEventData, SkillEntry, SkillWorkspaceKind, SkillWorkspaceRef, ProviderProfile } from '../shared/ipc-types'
 
 // Opt-in remote debugging for renderer forensics: SENTINEL_CDP=9222 npm run dev
 if (process.env.SENTINEL_CDP) {
@@ -127,7 +127,9 @@ const taskAbortControllers = new Map<string, Set<AbortController>>()
 async function loadRuntimeMode(): Promise<void> {
   try {
     const raw = JSON.parse(await fs.readFile(RUNTIME_FILE, 'utf8'))
-    if (raw.mode === 'serve' || raw.mode === 'cli' || raw.mode === 'claude') runtimeMode = raw.mode
+    // 'codex' is accepted so a hand-edited runtime.json fails loudly
+    // ("尚未启用") instead of silently downgrading to CLI.
+    if (raw.mode === 'serve' || raw.mode === 'cli' || raw.mode === 'claude' || raw.mode === 'codex') runtimeMode = raw.mode
   } catch {}
 }
 
@@ -253,11 +255,10 @@ function makeServeExecutor(
   }
 }
 
-/** Mode-aware executor used by manual runs, the scheduler and flow AI
- *  nodes: serve mode when selected (falling back to CLI if the server
- *  can't start), claude mode through the Agent SDK + protocol gateway,
- *  plain CLI otherwise. Decides per execution, so toggling the mode in
- *  Settings applies without restart. */
+/** Runtime registry: one RuntimeDescriptor per execution runtime. The
+ *  contract (capabilities / fallback policy / codex reservation) lives in
+ *  ipc-types; docs/RUNTIME-ARCHITECTURE.md is the design document. */
+
 const claudeExecutor = makeClaudeExecutor({
   profiles: listProviderProfiles,
   claudeConfigDir: join(DATA_DIR, 'claude-home'),
@@ -286,27 +287,91 @@ const claudeExecutor = makeClaudeExecutor({
   onLog: (level, msg) => sentinelEvents.emit('scheduler:log', { level, msg }),
 })
 
+const cliRuntime: RuntimeDescriptor = {
+  id: 'cli',
+  capabilities: { liveEvents: false, permissionDialog: false, abortable: true, sessionContinuity: true },
+  fallbackToCli: false,
+  execute: async (options) => {
+    // Abort support: register the run's controller so TASK_ABORT fires
+    // it; the core executor kills the child and records the abort.
+    const abortController = new AbortController()
+    const name = options.config.name
+    let controllers = taskAbortControllers.get(name)
+    if (!controllers) {
+      controllers = new Set()
+      taskAbortControllers.set(name, controllers)
+    }
+    controllers.add(abortController)
+    try {
+      return await executeTask({ ...options, abortSignal: abortController.signal })
+    } finally {
+      controllers.delete(abortController)
+      if (controllers.size === 0) taskAbortControllers.delete(name)
+    }
+  },
+}
+
+const serveRuntime: RuntimeDescriptor = {
+  id: 'serve',
+  capabilities: { liveEvents: true, permissionDialog: true, abortable: true, sessionContinuity: true },
+  fallbackToCli: true,
+  execute: async (options) => {
+    const server = await getServeServer()
+    return makeServeExecutor(server)(options)
+  },
+}
+
+const claudeRuntime: RuntimeDescriptor = {
+  id: 'claude',
+  capabilities: { liveEvents: true, permissionDialog: true, abortable: true, sessionContinuity: true },
+  fallbackToCli: false,
+  execute: claudeExecutor,
+}
+
+// Reserved slot (phase 3): the descriptor proves the dispatch contract;
+// activation lands with the @openai/codex-sdk executor + the gateway's
+// Responses frontend. Not selectable in Settings yet.
+const codexRuntime: RuntimeDescriptor = {
+  id: 'codex',
+  capabilities: { liveEvents: true, permissionDialog: false, abortable: true, sessionContinuity: true },
+  fallbackToCli: false,
+  reserved: '@openai/codex-sdk + gateway Responses frontend',
+  execute: async () => {
+    throw new Error('Codex runtime 尚未启用（预留接口，见 docs/RUNTIME-ARCHITECTURE.md）')
+  },
+}
+
+const runtimeRegistry = new Map<RuntimeMode, RuntimeDescriptor>([
+  ['cli', cliRuntime],
+  ['serve', serveRuntime],
+  ['claude', claudeRuntime],
+  ['codex', codexRuntime],
+])
+
+/** Mode-aware executor used by manual runs, the scheduler and flow AI
+ *  nodes. Dispatches through the runtime registry; toggling the mode in
+ *  Settings applies to the next run without restart. */
 const dynamicExecutor = async (
   options: ExecutorOptions,
 ): Promise<ExecutionResult> => {
-  if (runtimeMode === 'claude') {
-    // Fail-closed: no CLI fallback here - silently rerouting a run to
-    // opencode would execute it against a different provider than the
-    // task's binding. Configuration problems surface as failed runs.
-    return claudeExecutor(options)
-  }
-  if (runtimeMode === 'serve') {
+  const runtime = runtimeRegistry.get(runtimeMode)
+  if (!runtime) return executeTask(options)
+  if (runtime.fallbackToCli) {
     try {
-      const server = await getServeServer()
-      return await makeServeExecutor(server)(options)
+      return await runtime.execute(options)
     } catch (err) {
       sentinelEvents.emit('scheduler:log', {
         level: 'error',
-        msg: `[serve] runtime unavailable (${String(err)}), falling back to CLI for ${options.config.name}`,
+        msg: `[${runtime.id}] runtime unavailable (${String(err)}), falling back to CLI for ${options.config.name}`,
       })
+      return executeTask(options)
     }
   }
-  return executeTask(options)
+  // Fail-closed runtimes (claude, reserved codex): no CLI fallback -
+  // silently rerouting a run would execute it against a different
+  // provider than the task's binding. Configuration problems surface
+  // as failed runs.
+  return runtime.execute(options)
 }
 const flowEngine = new FlowEngine({
   flowStore,

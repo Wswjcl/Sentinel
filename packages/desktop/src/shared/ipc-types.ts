@@ -214,7 +214,43 @@ export interface SkillEntry extends SkillWorkspaceRef {
 
 // ─── Serve runtime (R3) ─────────────────────────────────────────────
 
-export type RuntimeMode = 'cli' | 'serve' | 'claude'
+/**
+ * Execution runtimes. 'cli' and 'serve' drive OpenCode (subprocess /
+ * HTTP server); 'claude' drives the Agent SDK over the local protocol
+ * gateway; 'codex' is reserved (interface proven, activation planned -
+ * see docs/RUNTIME-ARCHITECTURE.md).
+ */
+export type RuntimeMode = 'cli' | 'serve' | 'claude' | 'codex'
+
+/** What a runtime can do - drives UI affordances and abort wiring. */
+export interface RuntimeCapabilities {
+  /** Streams LiveEventData to the renderer while the run is in flight. */
+  liveEvents: boolean
+  /** Permission asks surface as interactive dialogs (else deny/timeout). */
+  permissionDialog: boolean
+  /** TASK_ABORT can stop an in-flight run. */
+  abortable: boolean
+  /** Honors continueSession (continue/fork) on subsequent runs. */
+  sessionContinuity: boolean
+}
+
+/** A pluggable execution runtime. Implemented by the opencode CLI/serve
+ *  paths, the Claude SDK executor, and (reserved) the future Codex
+ *  executor - one contract, dispatchable by id. */
+export interface RuntimeDescriptor {
+  id: RuntimeMode
+  /** Execute one task run. When capabilities.abortable, must honor
+   *  options.abortSignal (the core executor kills the child on abort). */
+  execute: (options: import('@sentinel/core').ExecutorOptions) => Promise<import('@sentinel/core').ExecutionResult>
+  capabilities: RuntimeCapabilities
+  /** When true, dispatch failures fall back to the CLI runtime (serve:
+   *  its server may not start). Provider-relevant runtimes (claude/
+   *  codex) fail closed instead - silent rerouting would execute the
+   *  run against a different provider than the task's binding. */
+  fallbackToCli: boolean
+  /** Present but not activatable yet (codex reservation): the reason. */
+  reserved?: string
+}
 
 export interface PermissionAskData {
   id: string

@@ -47,6 +47,11 @@ export interface ExecutorOptions {
   /** Session continuity: continue or fork an existing OpenCode session
    *  instead of starting a fresh one. */
   continueSession?: { sessionId: string; fork: boolean }
+  /** Abort signal: when fired, the opencode process is killed and the run
+   *  records as aborted ("Run aborted by user"), mirroring the serve
+   *  runtime's abort semantics. The desktop app wires TASK_ABORT through
+   *  this; serve/claude runtimes take signals via their own paths. */
+  abortSignal?: AbortSignal
 }
 
 export interface ExecutionResult {
@@ -156,6 +161,13 @@ export async function executeTask(
       // in prompt content (e.g. $(...), backticks, semicolons)
     })
 
+    // TASK_ABORT / user stop: kill the process; the close handler below
+    // records the run as aborted instead of a plain non-zero exit.
+    const onAbort = (): void => {
+      if (!proc.killed) proc.kill()
+    }
+    options.abortSignal?.addEventListener('abort', onAbort, { once: true })
+
     proc.stdout?.on('data', (data: Buffer) => {
       const chunk = data.toString()
       combinedOutput += chunk
@@ -167,6 +179,7 @@ export async function executeTask(
     })
 
     proc.on('close', (code) => {
+      options.abortSignal?.removeEventListener('abort', onAbort)
       const summaryEvents = parser.finalize()
 
       record.finishedAt = new Date().toISOString()
@@ -191,9 +204,13 @@ export async function executeTask(
         : combinedOutput.slice(-5000)
 
       // Fail-closed: an error event means the run failed even if the
-      // process somehow exits 0.
+      // process somehow exits 0. An abort overrides both: the user
+      // stopped the run deliberately, whatever the exit code says.
       const eventErrors = summaryEvents.errors.join('; ')
-      if (eventErrors) {
+      if (options.abortSignal?.aborted) {
+        record.status = 'failed'
+        record.error = 'Run aborted by user'
+      } else if (eventErrors) {
         record.status = 'failed'
         if (!record.error) record.error = eventErrors
       } else {
@@ -217,6 +234,7 @@ export async function executeTask(
     })
 
     proc.on('error', (err) => {
+      options.abortSignal?.removeEventListener('abort', onAbort)
       record.finishedAt = new Date().toISOString()
       record.exitCode = -1
       record.status = 'failed'
