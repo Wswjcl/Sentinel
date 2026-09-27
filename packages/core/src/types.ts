@@ -105,12 +105,16 @@ export interface TaskBudget {
 /** Sentinel-managed permission card, compiled into the workspace
  *  .opencode config's permission section. */
 /** One permission ask and its outcome ('timeout' = auto-denied after
- *  the 2-minute wait with no user answer). */
+ *  the 2-minute wait with no user answer; 'rule-allow'/'rule-deny' =
+ *  decided automatically by the workspace rule engine, with the matched
+ *  rule named in `rule`). */
 export interface PermissionAskRecord {
   permission: string
   patterns: string[]
-  response: 'once' | 'always' | 'reject' | 'timeout'
+  response: 'once' | 'always' | 'reject' | 'timeout' | 'rule-allow' | 'rule-deny'
   at: string
+  /** Name of the rule that decided this ask (rule-managed cards only). */
+  rule?: string
 }
 
 export type PermissionLevel = 'allow' | 'ask' | 'deny'
@@ -127,6 +131,14 @@ export interface PermissionProfile {
   /** Access to paths outside the workspace - gates reads too. */
   external?: PermissionLevel
   webfetch?: PermissionLevel
+  /** Rule-managed workspaces (v3.6): extra directories (absolute, or
+   *  relative to the task dir) the agent may operate in. When non-empty,
+   *  the card compiles to ask-everything and Sentinel's rule engine
+   *  answers each request automatically: inside any workspace root the
+   *  card's own policies decide, everything else is auto-denied and
+   *  audited ("outside-workspace"). Requires the serve or claude runtime
+   *  (CLI mode cannot enforce/audit this and refuses such runs). */
+  workspaces?: string[]
 }
 
 export type TaskStatus =

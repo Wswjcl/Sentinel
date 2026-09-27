@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { PermissionLevel, PermissionProfile } from './types.js'
 
 /**
@@ -32,6 +32,13 @@ interface PermissionSidecar {
 
 /** The compiled permission object forms, one per preset/custom choice. */
 export function compilePermissionConfig(profile: PermissionProfile): Record<string, unknown> {
+  // Rule-managed cards (workspaces configured): compile to ask-everything
+  // so EVERY request routes through Sentinel - the rule engine answers
+  // and audits each one (evaluatePermissionRequest below). The card's own
+  // policies are then enforced by the rule layer, not by opencode.
+  if (profile.workspaces && profile.workspaces.length > 0) {
+    return { edit: 'ask', bash: 'ask', webfetch: 'ask', external_directory: { '*': 'ask' } }
+  }
   switch (profile.preset) {
     case 'readonly':
       // Look and report, change nothing without approval
@@ -162,4 +169,119 @@ export async function hasPermissionProfile(taskDir: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+// ─── Workspace rule engine (v3.6) ──────────────────────────────────
+// Rule-managed cards (workspaces configured) route every permission
+// request through here. Decisions are automatic and audited; only
+// unmatched requests escalate to the human dialog. Enforced by the
+// serve runtime (onPermission hook) and the claude runtime (canUseTool);
+// the CLI runtime refuses rule-managed runs (no interception point).
+
+/** Minimal shape both runtimes already have at their decision points. */
+export interface PermissionRequestLike {
+  permission: string
+  patterns: string[]
+  metadata: Record<string, unknown>
+}
+
+export interface RuleDecision {
+  response: 'rule-allow' | 'rule-deny' | 'ask'
+  /** Matched rule name, recorded in PermissionAskRecord.rule. */
+  rule: string
+}
+
+const WRITE_TOOLS = new Set(['edit', 'write', 'multiedit', 'notebookedit', 'applypatch', 'patch'])
+const READ_TOOLS = new Set(['read', 'glob', 'grep', 'ls', 'list', 'view'])
+
+/** Glob match. `pathMode`: `*` stops at path separators (editGlobs);
+ *  otherwise `*` matches anything incl. spaces (bash command text). */
+export function globMatch(pattern: string, text: string, pathMode = false): boolean {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '\u0000')
+    .replace(/\*/g, pathMode ? '[^/]*' : '.*')
+    .replace(/\?/g, pathMode ? '[^/]' : '.')
+    .replace(/\u0000/g, '.*')
+  return new RegExp(`^${escaped}$`, 'i').test(text)
+}
+
+function isInsideRoot(child: string, root: string): boolean {
+  const norm = (p: string): string => (process.platform === 'win32' ? p.toLowerCase() : p)
+  const rel = relative(norm(resolve(root)), norm(resolve(child)))
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+function requestPathOf(request: PermissionRequestLike): string | null {
+  for (const key of ['file_path', 'path', 'notebook_path']) {
+    const v = request.metadata?.[key]
+    if (typeof v === 'string' && v.trim()) return v.trim()
+  }
+  const first = request.patterns[0]
+  if (first) {
+    const trimmed = first.trim()
+    // A concrete path (absolute, or relative without glob characters)
+    // evaluates; glob-shaped patterns cannot name a target - escalate.
+    if (isAbsolute(trimmed) || !/[*?]/.test(trimmed)) return trimmed
+  }
+  return null
+}
+
+/**
+ * Decide one permission request against a rule-managed card. `roots` are
+ * the absolute workspace roots (task dir + card workspaces); `baseDir`
+ * is where relative paths in requests resolve from (the task dir) and
+ * what relative editGlobs match against.
+ *
+ * Outside every root: auto-deny. Inside: the card's own policies decide
+ * (bash/webfetch by tool policy, writes by preset/globs, reads free).
+ * Anything the rules can't classify escalates to the human dialog.
+ */
+export function evaluatePermissionRequest(
+  profile: PermissionProfile,
+  request: PermissionRequestLike,
+  roots: string[],
+  baseDir: string,
+): RuleDecision {
+  const tool = request.permission.toLowerCase()
+  const first = request.patterns[0]?.trim() ?? ''
+
+  // bash cannot be path-confined (a command's file access is not static)
+  if (tool === 'bash') {
+    for (const pattern of profile.bashDeny ?? []) {
+      if (globMatch(pattern, first)) return { response: 'rule-deny', rule: `bash-deny(${pattern})` }
+    }
+    if (profile.bash === 'allow') return { response: 'rule-allow', rule: 'bash-allow' }
+    if (profile.bash === 'deny') return { response: 'rule-deny', rule: 'bash-deny' }
+    return { response: 'ask', rule: 'bash-ask' }
+  }
+  if (tool === 'webfetch' || tool === 'websearch') {
+    if (profile.webfetch === 'allow') return { response: 'rule-allow', rule: 'webfetch-allow' }
+    if (profile.webfetch === 'deny') return { response: 'rule-deny', rule: 'webfetch-deny' }
+    return { response: 'ask', rule: 'webfetch-ask' }
+  }
+
+  const path = requestPathOf(request)
+  if (!path) return { response: 'ask', rule: 'unmatched-tool' }
+
+  const abs = isAbsolute(path) ? resolve(path) : resolve(baseDir, path)
+  if (!roots.some((root) => isInsideRoot(abs, root))) {
+    return { response: 'rule-deny', rule: 'outside-workspace' }
+  }
+
+  if (READ_TOOLS.has(tool)) return { response: 'rule-allow', rule: 'workspace-read' }
+  if (WRITE_TOOLS.has(tool)) {
+    if (profile.preset === 'readonly') return { response: 'rule-deny', rule: 'readonly-deny' }
+    if (profile.preset === 'trusted') return { response: 'rule-allow', rule: 'workspace-edit' }
+    if (profile.preset === 'custom') {
+      const rel = relative(resolve(baseDir), abs).split(sep).join('/')
+      const hit =
+        (profile.editGlobs ?? []).some((glob) => globMatch(glob, rel, true) || globMatch(glob, abs, true))
+      if (hit) return { response: 'rule-allow', rule: 'edit-glob-allow' }
+      return { response: 'ask', rule: 'edit-glob-ask' }
+    }
+    // standard: whole workspace writable
+    return { response: 'rule-allow', rule: 'workspace-edit' }
+  }
+  return { response: 'ask', rule: 'unmatched-tool' }
 }

@@ -5,7 +5,7 @@ import { promises as fs, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, resolve, dirname, basename, parse } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents, applyProviderBinding, resolveWindowsBinary, applyPermissionProfile, hasPermissionProfile, aggregateUsage, monthToDate } from '@sentinel/core'
+import { TaskStore, FlowStore, FlowEngine, Scheduler, runTaskExecution, executeTask, OpenCodeServer, validateFlow, isValidCron, isValidSchedule, isValidTaskName, generateOpenCodeConfig, generateSkillContent, sentinelEvents, applyProviderBinding, resolveWindowsBinary, applyPermissionProfile, hasPermissionProfile, evaluatePermissionRequest, aggregateUsage, monthToDate } from '@sentinel/core'
 import type { TaskConfig, ExternalDir, OpenCodeConfig, FlowConfig, PermissionResponse, ExecutorOptions, ExecutionResult, ManualGateDecision, PermissionProfile, PermissionAskRecord, UsageRecordish, TaskBudget } from '@sentinel/core'
 import { makeClaudeExecutor } from './claude-executor'
 import { IPC } from '../shared/ipc-types'
@@ -211,8 +211,33 @@ function makeServeExecutor(
             event: event.kind === 'permission' ? { kind: 'status', status: 'permission-asked' } : event,
           })
         },
-        onPermission: (request) =>
-          new Promise<PermissionResponse>((resolve) => {
+        onPermission: (request) => {
+          // Rule-managed cards (workspaces configured) answer here first:
+          // the workspace rule engine auto-allows / auto-denies and audits
+          // every request; only unmatched ones reach the human dialog.
+          const profile = options.config.permissions
+          if (profile?.workspaces?.length) {
+            const roots = [
+              options.taskDir,
+              ...profile.workspaces.map((w) => resolve(options.taskDir, w)),
+            ]
+            const decision = evaluatePermissionRequest(profile, request, roots, options.taskDir)
+            if (decision.response !== 'ask') {
+              asks.push({
+                permission: request.permission,
+                patterns: request.patterns,
+                response: decision.response,
+                rule: decision.rule,
+                at: new Date().toISOString(),
+              })
+              sentinelEvents.emit('scheduler:log', {
+                level: decision.response === 'rule-deny' ? 'warn' : 'info',
+                msg: `[perm-rule] ${name}: ${request.permission}${request.patterns.length ? ` (${request.patterns[0]})` : ''} → ${decision.response} (${decision.rule})`,
+              })
+              return Promise.resolve(decision.response === 'rule-allow' ? 'once' : 'reject')
+            }
+          }
+          return new Promise<PermissionResponse>((resolve) => {
             permissionWaiters.set(request.id, resolve)
             const ask: PermissionAskData = {
               id: request.id,
@@ -226,7 +251,8 @@ function makeServeExecutor(
             notifyPermissionAsk(name, ask)
             // Core denies after its own timeout; this cleanup just drops the waiter.
             setTimeout(() => permissionWaiters.delete(request.id), 130_000)
-          }),
+          })
+        },
         onPermissionResult: (request, response) => {
           asks.push({
             permission: request.permission,
@@ -292,6 +318,12 @@ const cliRuntime: RuntimeDescriptor = {
   capabilities: { liveEvents: false, permissionDialog: false, abortable: true, sessionContinuity: true },
   fallbackToCli: false,
   execute: async (options) => {
+    // Fail-closed: a rule-managed card compiles to ask-everything, and
+    // CLI mode (--auto) auto-approves asks - the workspace rules would
+    // be silently bypassed AND unaudited. Serve/claude enforce them.
+    if (options.config.permissions?.workspaces?.length) {
+      throw new Error('规则托管权限卡（配置了工作区）需要 serve 或 Claude 运行时：CLI 模式无法强制执行工作区规则')
+    }
     // Abort support: register the run's controller so TASK_ABORT fires
     // it; the core executor kills the child and records the abort.
     const abortController = new AbortController()

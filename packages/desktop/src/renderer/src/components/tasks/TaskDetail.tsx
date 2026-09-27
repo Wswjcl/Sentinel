@@ -818,13 +818,13 @@ function HistoryTab({ history }: { history: TaskRunRecord[] }) {
                   {record.permissionAsks.map((ask, i) => (
                     <li key={i} className="text-xs text-[var(--color-text-dim)] font-mono flex items-center gap-1.5">
                       <span className={
-                        ask.response === 'timeout' || ask.response === 'reject'
+                        ask.response === 'timeout' || ask.response === 'reject' || ask.response === 'rule-deny'
                           ? 'text-[var(--color-red)]'
                           : 'text-[var(--color-green)]'
                       }>●</span>
                       {ask.permission}
                       {ask.patterns.length > 0 && <span className="truncate max-w-[300px]">{ask.patterns[0]}</span>}
-                      <span>→ {t(`detail.permResp.${ask.response}`)}</span>
+                      <span>→ {t(`detail.permResp.${ask.response}`)}{ask.rule ? ` (${ask.rule})` : ''}</span>
                     </li>
                   ))}
                 </ul>

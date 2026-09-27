@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { ProtocolGateway } from '@sentinel/core'
 import type {
   ExecutorOptions,
@@ -11,6 +11,7 @@ import type {
   PermissionAskRecord,
   ToolCallRecord,
 } from '@sentinel/core'
+import { evaluatePermissionRequest } from '@sentinel/core'
 import type { ProviderProfile, LiveEventData, PermissionAskData } from '../shared/ipc-types'
 import type {
   CanUseTool,
@@ -169,16 +170,52 @@ export function makeClaudeExecutor(
     const textParts: string[] = []
     let sessionId = ''
 
-    // canUseTool closure: every non-trusted tool call becomes a dialog.
-    // 'always' applies the SDK's own session-scoped suggestions so the
-    // user isn't re-asked for the same tool during the session.
+    // canUseTool closure: rule-managed cards (workspaces configured) are
+    // decided first by the workspace rule engine (auto-allow / auto-deny,
+    // audited); 'trusted' never reaches here (bypassPermissions); every
+    // other request becomes a dialog. 'always' applies the SDK's own
+    // session-scoped suggestions so the user isn't re-asked for the same
+    // tool during the session.
     const canUseTool: CanUseTool = async (toolName, input, toolOptions) => {
       if (toolOptions.signal.aborted) {
         return { behavior: 'deny', message: 'run aborted' }
       }
-      const askId = randomUUID()
       const describe = describeInput(input)
       const patterns = describe ? [describe] : []
+
+      const profile = config.permissions
+      if (profile?.workspaces?.length) {
+        const roots = [taskDir, ...profile.workspaces.map((w) => resolve(taskDir, w))]
+        const decision = evaluatePermissionRequest(
+          profile,
+          { permission: toolName, patterns, metadata: { input } },
+          roots,
+          taskDir,
+        )
+        if (decision.response !== 'ask') {
+          asks.push({
+            permission: toolName,
+            patterns,
+            response: decision.response,
+            rule: decision.rule,
+            at: new Date().toISOString(),
+          })
+          if (decision.response === 'rule-deny') {
+            deps.onLog('warn', `[perm-rule] ${name}: ${toolName}${describe ? ` (${describe})` : ''} → rule-deny (${decision.rule})`)
+            return {
+              behavior: 'deny',
+              message:
+                decision.rule === 'outside-workspace'
+                  ? '操作被工作区规则拒绝：目标位于工作区之外'
+                  : `操作被工作区规则拒绝（${decision.rule}）`,
+            }
+          }
+          deps.onLog('info', `[perm-rule] ${name}: ${toolName}${describe ? ` (${describe})` : ''} → rule-allow (${decision.rule})`)
+          return { behavior: 'allow' }
+        }
+      }
+
+      const askId = randomUUID()
       const ask: PermissionAskData = {
         id: askId,
         sessionId,

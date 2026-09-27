@@ -27,6 +27,7 @@ export default function PermissionCard({ kind, name }: PermissionCardProps) {
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [globDraft, setGlobDraft] = useState('')
+  const [wsDraft, setWsDraft] = useState('')
 
   useEffect(() => {
     const api = kind === 'flow' ? window.api.getFlowPermission : window.api.getTaskPermission
@@ -98,9 +99,10 @@ export default function PermissionCard({ kind, name }: PermissionCardProps) {
               const v = e.target.value
               if (!v) return void save(null)
               if (v === 'custom') {
-                return void save({ preset: 'custom', bash: 'ask', external: 'ask', webfetch: 'ask', editGlobs: [] })
+                // Preserve workspaces across preset switches
+                return void save({ preset: 'custom', bash: 'ask', external: 'ask', webfetch: 'ask', editGlobs: [], workspaces: profile?.workspaces })
               }
-              return void save({ preset: v as PermissionPreset })
+              return void save({ preset: v as PermissionPreset, workspaces: profile?.workspaces })
             }}
             className="flex-1 bg-[var(--color-hover)] border border-[var(--color-border)] rounded-lg
                        px-3 py-1.5 text-sm text-[var(--color-text)]
@@ -116,6 +118,71 @@ export default function PermissionCard({ kind, name }: PermissionCardProps) {
           {saving && <span className="text-xs text-[var(--color-text-dim)]">{t('detail.saving')}</span>}
         </div>
         {preset && <p className="text-xs text-[var(--color-text-dim)]">{t(`detail.permDesc.${preset}`)}</p>}
+
+        {/* Workspaces (rule-managed): task dir is implicit; extra dirs turn
+            on the rule engine - inside = card rules (audited), outside =
+            auto-deny. Meaningless under 'trusted' (everything allowed). */}
+        {preset && preset !== 'trusted' && profile && (
+          <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
+            <label className={labelCls}>{t('detail.permWorkspaces')}</label>
+            <p className="text-xs text-[var(--color-text-dim)]">{t('detail.permWorkspacesHint')}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {(profile.workspaces ?? []).map((w) => (
+                <span
+                  key={w}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-hover)]
+                             border border-[var(--color-border)] text-xs font-mono text-[var(--color-text)]"
+                >
+                  {w}
+                  <button
+                    onClick={() =>
+                      void save({ ...profile, workspaces: (profile.workspaces ?? []).filter((x) => x !== w) })
+                    }
+                    className="text-[var(--color-text-dim)] hover:text-[var(--color-red)]"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              {(profile.workspaces ?? []).length === 0 && (
+                <span className="text-xs text-[var(--color-text-dim)]">{t('detail.permNoWorkspaces')}</span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={wsDraft}
+                onChange={(e) => setWsDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    const w = wsDraft.trim()
+                    if (w && !(profile.workspaces ?? []).includes(w)) {
+                      void save({ ...profile, workspaces: [...(profile.workspaces ?? []), w] })
+                    }
+                    setWsDraft('')
+                  }
+                }}
+                placeholder={t('detail.permWorkspacesPlaceholder')}
+                className={`${inputCls} flex-1 font-mono`}
+              />
+              <button
+                onClick={() => {
+                  const w = wsDraft.trim()
+                  if (w && !(profile.workspaces ?? []).includes(w)) {
+                    void save({ ...profile, workspaces: [...(profile.workspaces ?? []), w] })
+                  }
+                  setWsDraft('')
+                }}
+                className="px-3 rounded-lg bg-[var(--color-hover)] hover:bg-[var(--color-border)]
+                           text-[var(--color-text)] transition-colors"
+                title={t('detail.permAdd')}
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Custom controls */}
         {preset === 'custom' && profile && (
